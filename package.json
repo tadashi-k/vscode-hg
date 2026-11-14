@@ -1,0 +1,147 @@
+{
+  "name": "vscode-hg",
+  "displayName": "Mercurial (Hg)",
+  "description": "Mercurial source control integration for VS Code",
+  "version": "0.1.0",
+  "publisher": "tadashi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tadashi-k/vscode-hg"
+  },
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:.hg/hgrc"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hg.refresh",
+        "title": "Refresh",
+        "category": "Mercurial",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "hg.commit",
+        "title": "Commit",
+        "category": "Mercurial",
+        "icon": "$(check)"
+      },
+      {
+        "command": "hg.commitAll",
+        "title": "Commit All",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.add",
+        "title": "Add",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.revert",
+        "title": "Revert Changes",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.clean",
+        "title": "Clean Untracked Files",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.showDiff",
+        "title": "Show Diff",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.log",
+        "title": "Show History",
+        "category": "Mercurial"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "hg.commit",
+          "group": "navigation",
+          "when": "scmProvider == hg"
+        },
+        {
+          "command": "hg.refresh",
+          "group": "navigation",
+          "when": "scmProvider == hg"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "hg.commitAll",
+          "when": "scmProvider == hg",
+          "group": "inline"
+        },
+        {
+          "command": "hg.clean",
+          "when": "scmProvider == hg",
+          "group": "1_modification"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "hg.add",
+          "when": "scmProvider == hg && scmResourceGroup == working",
+          "group": "1_modification"
+        },
+        {
+          "command": "hg.revert",
+          "when": "scmProvider == hg && scmResourceGroup == working",
+          "group": "1_modification"
+        },
+        {
+          "command": "hg.showDiff",
+          "when": "scmProvider == hg && scmResourceGroup != untracked",
+          "group": "2_view"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Mercurial",
+      "properties": {
+        "hg.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether Mercurial integration is enabled"
+        },
+        "hg.path": {
+          "type": "string",
+          "default": "hg",
+          "description": "Path to the hg executable"
+        },
+        "hg.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Refresh repository status automatically when files change"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && vscode-test",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.99.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "mocha": "^12.0.3",
+    "typescript": "^5.8.0"
+  }
+}
