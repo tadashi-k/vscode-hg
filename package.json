@@ -63,9 +63,51 @@
         "command": "hg.log",
         "title": "Show History",
         "category": "Mercurial"
+      },
+      {
+        "command": "hg.showGraph",
+        "title": "Show History Graph",
+        "category": "Mercurial",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "hg.showRevisionDetails",
+        "title": "Show Revision Details",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.showRevisionDiff",
+        "title": "Show Revision Diff",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.updateToRevision",
+        "title": "Update to Revision",
+        "category": "Mercurial"
       }
     ],
+    "views": {
+      "scm": [
+        {
+          "id": "hg.graph",
+          "name": "Graph",
+          "when": "hg.repoCount >= 1 && config.hg.showGraphInView != false"
+        }
+      ]
+    },
     "menus": {
+      "view/item/context": [
+        {
+          "command": "hg.showRevisionDiff",
+          "when": "view == hg.graph",
+          "group": "1_modification"
+        },
+        {
+          "command": "hg.updateToRevision",
+          "when": "view == hg.graph",
+          "group": "2_control"
+        }
+      ],
       "scm/title": [
         {
           "command": "hg.commit",
@@ -74,6 +116,11 @@
         },
         {
           "command": "hg.refresh",
+          "group": "navigation",
+          "when": "scmProvider == hg"
+        },
+        {
+          "command": "hg.showGraph",
           "group": "navigation",
           "when": "scmProvider == hg"
         }
@@ -125,6 +172,16 @@
           "type": "boolean",
           "default": true,
           "description": "Refresh repository status automatically when files change"
+        },
+        "hg.historyLimit": {
+          "type": "number",
+          "default": 200,
+          "description": "Maximum number of revisions to load in the history graph view"
+        },
+        "hg.showGraphInView": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Graph view in the Source Control view container"
         }
       }
     }

@@ -10,6 +10,13 @@ similar to the built-in Git extension.
 - Add untracked files, revert changes, purge untracked files (`hg purge`)
 - Inline diff against the parent revision (`hg diff`-style view)
 - Show repository history (`hg log`)
+- **History graph view**: colored revision graph with branches/merges,
+  click a changeset for details, right-click to show its diff or update
+  the working directory to it (`hg update -r`)
+- **Graph tree view in the Source Control area**: like the built-in Git
+  extension's Source Control Graph — a `Graph` section appears next to
+  Repositories/Changes listing recent changesets (click for details,
+  context menu for diff / update). Toggle with `hg.showGraphInView`
 - Branch name in the SCM view label
 - Automatic refresh on file changes
 
@@ -53,8 +60,9 @@ npx vscode-test   # without recompiling
 Config lives in `.vscode-test.mjs` (tests in `src/test/`, sample repo at
 `../hg-example-repo`, mocha BDD ui, `HGRCPATH` pointing to
 `../.hg-test-hgrc` so commits can run). The tests verify SCM registration,
-status detection (modified + untracked), branch info, and end-to-end commit
-through the `hg.commit` command.
+status detection (modified + untracked), branch info, the webview graph,
+the SCM-area graph tree view, and end-to-end commit through the
+`hg.commit` command.
 
 Note: dev extensions can get a different publisher id than the one in
 package.json, so tests look the extension up by name suffix (`.vscode-hg`)
@@ -71,7 +79,7 @@ npx @vscode/vsce package
 - Single root repository per workspace folder (multi-root works folder-wise)
 - No shelve, uncommit, rebase, or bookmarks UI yet
 - No push/pull or phase handling
-- History view is a plain text document, not a graph view
+- History graph is ASCII-art based (`hg log -G`), not an SVG canvas
 
 ## Configuration
 
