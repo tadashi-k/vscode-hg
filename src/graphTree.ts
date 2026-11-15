@@ -151,16 +151,14 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
     }
 
     private buildCommitRows(root: string): vscode.TreeItem[] {
-        // all icons share the same viewBox width so nodes stay aligned
-        const cols = Math.max(2, ...this.rowsCache.map(r => r.art.length));
         const items: vscode.TreeItem[] = [];
         for (const row of this.rowsCache) {
             if (row.node) {
-                items.push(this.buildCommitItem(root, row, cols));
+                items.push(this.buildCommitItem(root, row));
             } else if (!isConnectorOnly(row.art)) {
                 // fork/merge edge rows: blank row carrying only the curve
                 const edge = new vscode.TreeItem('', vscode.TreeItemCollapsibleState.None);
-                edge.iconPath = rowIconUri(row.art, false, cols);
+                edge.iconPath = rowIconUri(row.art, false);
                 edge.contextValue = 'hg.edge';
                 items.push(edge);
             }
@@ -170,7 +168,7 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
         return items;
     }
 
-    private buildCommitItem(root: string, row: GraphRow, cols: number): vscode.TreeItem {
+    private buildCommitItem(root: string, row: GraphRow): vscode.TreeItem {
         const n = row.node!;
         const item = new HgTreeItem(n.desc, vscode.TreeItemCollapsibleState.Collapsed, {
             kind: 'commit',
@@ -183,7 +181,7 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
             branch: n.branch
         });
         item.description = n.user; // grey author text right of the title, like Git
-        item.iconPath = rowIconUri(row.art, true, cols);
+        item.iconPath = rowIconUri(row.art, true);
         item.contextValue = 'hg.commit';
 
         // native workbench hover (overflows the SCM panel into the editor)
@@ -206,7 +204,8 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
                 rev: data.rev,
                 node: data.node
             });
-            item.iconPath = statusIcon(f.status);
+            // plain single-letter status like Git (M, A, R...), right-aligned
+            item.description = f.status;
             item.command = {
                 command: 'hg.showFileDiffAtRevision',
                 title: 'Show Diff',
@@ -222,19 +221,4 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
     }
 }
 
-function statusIcon(status: string): vscode.ThemeIcon {
-    switch (status) {
-        case 'M':
-            return new vscode.ThemeIcon('diff-modified',
-                new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'));
-        case 'A':
-            return new vscode.ThemeIcon('diff-added',
-                new vscode.ThemeColor('gitDecoration.addedResourceForeground'));
-        case 'R':
-            return new vscode.ThemeIcon('diff-removed',
-                new vscode.ThemeColor('gitDecoration.deletedResourceForeground'));
-        default:
-            return new vscode.ThemeIcon('circle-outline',
-                new vscode.ThemeColor('gitDecoration.untrackedResourceForeground'));
-    }
-}
+

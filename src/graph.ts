@@ -114,8 +114,8 @@ export function artSvgElements(
 ): string {
     const parts: string[] = [];
     const x = (i: number): number => (i + 0.5) * colW;
-    const W = '1.5';
-    const NODE_R = 4;
+    const W = '2';
+    const NODE_R = 5;
 
     for (let i = 0; i < art.length; i++) {
         const c = art[i];
@@ -150,7 +150,7 @@ export function artSvgElements(
             case 'x': {
                 // '@' marks the working-copy parent (the newest revision);
                 // draw it as a hollow ring like Git draws the HEAD commit
-                const r = c === '@' ? 5 : NODE_R;
+                const r = c === '@' ? 6 : NODE_R;
                 const cy = yOffset + height / 2;
                 if (isCommit) {
                     parts.push(`<line x1="${xi}" y1="${yOffset}" x2="${xi}" y2="${cy - r}" stroke="${color}" stroke-width="${W}"/>`);
@@ -171,16 +171,14 @@ export function artSvgElements(
 }
 
 /**
- * Icon for a tree row: the row's art inside a square viewBox so the icon
- * fills the tree's 16x16 icon box; the art is vertically centered. All
- * rows share the same viewBox width (longest art), so nodes stay aligned
- * across rows.
+ * Icon for a tree row: a square 22x22 viewBox so it fills the tree's
+ * 16x16 icon box and the node dot renders as a proper circle (like Git).
+ * The art is clipped to the leftmost 2 lanes; all rows share the same
+ * viewBox so nodes stay aligned across rows.
  */
-export function rowIconUri(art: string, isCommit: boolean, cols: number): vscode.Uri {
-    const s = Math.max(2, cols) * 11;
-    const yOffset = (s - 22) / 2;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">`
-        + artSvgElements(art, isCommit, 22, yOffset)
+export function rowIconUri(art: string, isCommit: boolean): vscode.Uri {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">'
+        + artSvgElements(art.slice(0, 2), isCommit, 22, 0)
         + '</svg>';
     return vscode.Uri.parse('data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64'));
 }

@@ -66,6 +66,26 @@
         "title": "Toggle Annotate",
         "category": "Mercurial",
         "icon": "$(versions)"
+      },
+      {
+        "command": "hg.showRevisionDetails",
+        "title": "Show Revision Details",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.showRevisionDiff",
+        "title": "Show Revision Diff",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.showFileDiffAtRevision",
+        "title": "Show File Diff at Revision",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.updateToRevision",
+        "title": "Update to Revision",
+        "category": "Mercurial"
       }
     ],
     "views": {
