@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
 
 const HG_TEST_ENV = process.env.HGRCPATH
@@ -115,6 +116,36 @@ describe('vscode-hg extension', () => {
                 throw new Error(`command ${cmd} not registered`);
             }
         }
+    });
+
+    it('shows a diff when a file in Changes is clicked', async function () {
+        this.timeout(30000);
+        await vscode.commands.executeCommand('hg.refresh');
+        await sleep(1500);
+
+        const repo = api.repositories()[0];
+        const mainUri = vscode.Uri.file(path.join(root, 'main.py'));
+
+        // 1) the resource state must carry a diff command (what clicking triggers)
+        const state = repo.workingGroup.resourceStates
+            .find(s => path.basename(s.resourceUri.fsPath) === 'main.py');
+        if (!state?.command) {
+            throw new Error('main.py resource state has no command attached');
+        }
+        await vscode.commands.executeCommand(
+            state.command.command, ...(state.command.arguments ?? [])
+        );
+
+        // 2) the hg: content provider must serve parent-revision content
+        const doc = await vscode.workspace.openTextDocument(toHgUri(root, 'main.py', '.'));
+        const expected = execFileSync('hg', ['cat', '-r', '.', '--', 'main.py'],
+            { cwd: root, env: HG_TEST_ENV }).toString();
+        if (doc.getText() !== expected) {
+            throw new Error('hg: provider content does not match `hg cat -r . main.py`\n'
+                + `provider: ${JSON.stringify(doc.getText().slice(0, 100))}\n`
+                + `hg:       ${JSON.stringify(expected.slice(0, 100))}`);
+        }
+        void mainUri;
     });
 
     it('commits all changes via hg.commit', async function () {

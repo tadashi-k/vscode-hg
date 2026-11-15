@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { HgStatus, parseStatus, runHg, showHgError } from './hg';
-import { toHgUri } from './contentProvider';
+import { relPathInRepo, toHgUri } from './contentProvider';
 
 export class HgRepository implements vscode.Disposable {
     readonly root: string;
@@ -24,6 +24,14 @@ export class HgRepository implements vscode.Disposable {
 
         this.repo = vscode.scm.createSourceControl('hg', 'Mercurial', rootUri);
         this.repo.acceptInputCommand = { command: 'hg.commit', title: 'Commit' };
+
+        // gutter diff decorations against the parent revision, like the Git extension
+        this.repo.quickDiffProvider = {
+            provideOriginalResource: (uri: vscode.Uri): vscode.Uri | undefined => {
+                const rel = relPathInRepo(this.root, uri);
+                return rel ? toHgUri(this.root, rel, '.') : undefined;
+            }
+        };
 
         this.branchItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
         this.branchItem.command = 'hg.log';
@@ -173,7 +181,11 @@ export class HgRepository implements vscode.Disposable {
     }
 
     async showDiff(fileUri: vscode.Uri): Promise<void> {
-        const rel = path.relative(this.root, fileUri.fsPath).replace(/\\/g, '/');
+        const rel = relPathInRepo(this.root, fileUri);
+        if (!rel) {
+            vscode.window.showWarningMessage(`Mercurial: ${fileUri.fsPath} is not inside repository ${this.root}`);
+            return;
+        }
         const original = toHgUri(this.root, rel, '.');
         const title = `Mercurial: ${rel} (parent) ↔ working`;
         await vscode.commands.executeCommand('vscode.diff', original, fileUri, title);

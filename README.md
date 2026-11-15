@@ -8,7 +8,9 @@ similar to the built-in Git extension.
 - Source Control view with **Changes** and **Untracked Files** groups
 - Commit via the SCM input box (all or selected files)
 - Add untracked files, revert changes, purge untracked files (`hg purge`)
-- Inline diff against the parent revision (`hg diff`-style view)
+- Inline diff against the parent revision (`hg diff`-style view), both by
+  clicking a file in the **Changes** group and via editor **gutter diff
+  decorations** (through `quickDiffProvider`, like the Git extension)
 - Show repository history (`hg log`)
 - **History graph view**: colored revision graph with branches/merges,
   click a changeset for details, right-click to show its diff or update
