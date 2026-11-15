@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { alignBlames, parseAnnotate } from '../annotate';
+import { alignBlames, parseAnnotate, parseAnnotateNodes } from '../annotate';
 import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
 
@@ -187,9 +187,10 @@ describe('vscode-hg extension', () => {
     });
 
     it('parses hg annotate -u -d -q output into per-line blame prefixes', () => {
+        // real format of `hg annotate -u -d -q`: user, short date, ': ', code
         const out = [
             'tadashi 2025-01-14: first line',
-            'alice 2024-12-31 23:59:59 +0900: second line',
+            'alice 2024-12-31: second line',
             '',
             'no-separator-line'
         ].join('\n');
@@ -200,7 +201,7 @@ describe('vscode-hg extension', () => {
         if (hints[0] !== 'tadashi 2025-01-14') {
             throw new Error(`unexpected first hint: ${hints[0]}`);
         }
-        if (hints[1] !== 'alice 2024-12-31 23:59:59 +0900') {
+        if (hints[1] !== 'alice 2024-12-31') {
             throw new Error(`unexpected second hint: ${hints[1]}`);
         }
         // dates can contain ': ' inside? no - hg output separates with ': ' once,
@@ -220,6 +221,22 @@ describe('vscode-hg extension', () => {
         }
         if (JSON.stringify(alignBlames([])) !== '[]') {
             throw new Error('empty input must stay empty');
+        }
+    });
+
+    it('parses hg annotate -c -q output into per-line nodes', () => {
+        const out = [
+            '3f5a0d1c2b3e: first',
+            '9c8b7a6f5e4d: second',
+            'no-node-here',
+            ''
+        ].join('\n');
+        const nodes = parseAnnotateNodes(out);
+        if (JSON.stringify(nodes) !== JSON.stringify(['3f5a0d1c2b3e', '9c8b7a6f5e4d'])) {
+            throw new Error(`unexpected nodes: ${JSON.stringify(nodes)}`);
+        }
+        if (parseAnnotateNodes('').length !== 0) {
+            throw new Error('empty output must parse to no nodes');
         }
     });
 
