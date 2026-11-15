@@ -81,6 +81,11 @@
         "category": "Mercurial"
       },
       {
+        "command": "hg.showFileDiffAtRevision",
+        "title": "Show File Diff at Revision",
+        "category": "Mercurial"
+      },
+      {
         "command": "hg.updateToRevision",
         "title": "Update to Revision",
         "category": "Mercurial"
@@ -98,8 +103,23 @@
     "menus": {
       "view/item/context": [
         {
+          "command": "hg.showRevisionDetails",
+          "when": "view == hg.graph && item == hgRevision",
+          "group": "0_view"
+        },
+        {
           "command": "hg.showRevisionDiff",
-          "when": "view == hg.graph",
+          "when": "view == hg.graph && item == hgRevision",
+          "group": "1_modification"
+        },
+        {
+          "command": "hg.updateToRevision",
+          "when": "view == hg.graph && item == hgRevision",
+          "group": "2_control"
+        },
+        {
+          "command": "hg.showFileDiffAtRevision",
+          "when": "view == hg.graph && item == hgRevisionFile",
           "group": "1_modification"
         },
         {

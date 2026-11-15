@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
+import type { FileEntry } from '../graphTree';
 
 const HG_TEST_ENV = process.env.HGRCPATH
     ? { ...process.env, HGRCPATH: process.env.HGRCPATH }
@@ -146,6 +147,42 @@ describe('vscode-hg extension', () => {
                 + `hg:       ${JSON.stringify(expected.slice(0, 100))}`);
         }
         void mainUri;
+    });
+
+    it('lists changed files per commit and diffs a file at that revision', async function () {
+        this.timeout(30000);
+        await vscode.commands.executeCommand('hg.refresh');
+        await sleep(2000);
+
+        const tree = api.historyGraphTree();
+        if (!tree) { throw new Error('graph tree view not created'); }
+        const commits = tree.rows().filter(r => r.node);
+        const target = commits.find(r => r.node!.desc.includes('integration test'));
+        if (!target?.node) { throw new Error('no suitable commit found in graph'); }
+
+        // expanding the commit lists its changed files
+        const files = (await tree.getChildren(target))
+            .filter((f): f is FileEntry => 'kind' in f && f.kind === 'file');
+        if (files.length === 0) {
+            throw new Error('commit expansion returned no changed files');
+        }
+        for (const f of files) {
+            const item = tree.getTreeItem(f);
+            if (item.command?.command !== 'hg.showFileDiffAtRevision') {
+                throw new Error(`file item ${f.relPath} has no diff command`);
+            }
+            if (JSON.stringify(item.command.arguments) !==
+                JSON.stringify([f.root, f.relPath, f.rev, f.node, f.status])) {
+                throw new Error(`file item ${f.relPath} has wrong command arguments`);
+            }
+        }
+
+        // clicking a file opens the diff at that commit (parent -> commit)
+        const first = files[0];
+        await vscode.commands.executeCommand(
+            'hg.showFileDiffAtRevision',
+            first.root, first.relPath, first.rev, first.node, first.status
+        );
     });
 
     it('commits all changes via hg.commit', async function () {

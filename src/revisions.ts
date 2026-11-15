@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { runHg } from './hg';
+import { toHgUri } from './contentProvider';
 
 export async function showRevisionDetails(
     hgPath: string,
@@ -27,6 +28,30 @@ export async function showRevisionDiff(
     } else {
         vscode.window.showInformationMessage(`${label}: empty changeset`);
     }
+}
+
+/**
+ * Diff a single file *at* a changeset: parent revision vs the changeset itself.
+ * status handling: 'A' files get an empty original side, 'R' files an empty
+ * modified side (the null revision).
+ */
+export async function showFileDiffAtRevision(
+    hgPath: string,
+    root: string,
+    relPath: string,
+    rev: number,
+    node: string,
+    status: string
+): Promise<void> {
+    const origRev = (status === 'A' || status === '?') ? 'null' : `p1(${node})`;
+    const modRev = status === 'R' ? 'null' : node;
+    const title = `${relPath} (r${rev}, ${status})`;
+    await vscode.commands.executeCommand(
+        'vscode.diff',
+        toHgUri(root, relPath, origRev),
+        toHgUri(root, relPath, modRev),
+        title
+    );
 }
 
 export async function updateToRevision(

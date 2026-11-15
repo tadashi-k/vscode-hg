@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { artToHtml, escapeHtml, fetchGraph, GraphRow } from './graph';
-import { showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
+import { fetchChangesetFiles } from './graph';
+import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
 
 export class HgGraphView implements vscode.Disposable {
@@ -71,13 +72,35 @@ export class HgGraphView implements vscode.Disposable {
         );
     }
 
-    private async onMessage(msg: { type: string; rev?: number; node?: string }): Promise<void> {
+    private async onMessage(msg: { type: string; rev?: number; node?: string; path?: string; status?: string }): Promise<void> {
         const root = this.getRepoRoots()[0];
         if (!root) { return; }
         try {
             switch (msg.type) {
                 case 'refresh':
                     await this.refresh();
+                    break;
+                case 'changes': {
+                    // row clicked: fetch the changeset's files and push them to the webview
+                    if (msg.node === undefined || msg.rev === undefined) { break; }
+                    const files = await fetchChangesetFiles(this.hgPath, root, msg.node);
+                    const info = this.rowsCache.find(r => r.node?.rev === msg.rev)?.node;
+                    void this.panel?.webview.postMessage({
+                        type: 'changes',
+                        rev: msg.rev,
+                        node: msg.node,
+                        desc: info?.desc ?? '',
+                        branch: info?.branch ?? '',
+                        files
+                    });
+                    break;
+                }
+                case 'fileDiff':
+                    if (msg.node !== undefined && msg.rev !== undefined && msg.path) {
+                        await showFileDiffAtRevision(
+                            this.hgPath, root, msg.path, msg.rev, msg.node, msg.status ?? 'M'
+                        );
+                    }
                     break;
                 case 'details':
                     if (msg.node !== undefined && msg.rev !== undefined) {
@@ -109,7 +132,7 @@ export class HgGraphView implements vscode.Disposable {
                 return `<tr class="edge"><td class="art">${art}</td><td colspan="5"></td></tr>`;
             }
             const n = row.node;
-            return `<tr class="cs" data-rev="${n.rev}" data-node="${escapeHtml(n.node)}" title="Click for details">
+            return `<tr class="cs" data-rev="${n.rev}" data-node="${escapeHtml(n.node)}" title="Click to show changed files">
                 <td class="art">${art}</td>
                 <td class="rev">${n.rev}</td>
                 <td class="branch">${escapeHtml(n.branch)}</td>
@@ -178,6 +201,23 @@ export class HgGraphView implements vscode.Disposable {
     td.desc { width: auto; }
     .actions { visibility: hidden; width: 110px; white-space: nowrap; }
     .actions button { padding: 0 6px; margin-right: 4px; font-size: 11px; }
+    tr.cs.selected td { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+    #details { display: none; border-top: 1px solid var(--vscode-panel-border, transparent); margin-top: 8px; padding: 8px; }
+    #details .head { font-weight: bold; margin-bottom: 6px; }
+    #details .head .meta { font-weight: normal; opacity: .7; }
+    #details .files { display: flex; flex-wrap: wrap; gap: 6px; }
+    #details .file {
+        display: inline-flex; align-items: center; gap: 6px;
+        border: 1px solid var(--vscode-panel-border, transparent);
+        border-radius: 3px;
+        padding: 2px 8px; cursor: pointer; font-size: 12px;
+    }
+    #details .file:hover { background: var(--vscode-list-hoverBackground); }
+    #details .badge { font-weight: bold; }
+    .st-M .badge { color: var(--hg-graph-c3); }
+    .st-A .badge { color: var(--hg-graph-c6); }
+    .st-R .badge { color: var(--hg-graph-c5); }
+    .st-empty { opacity: .6; }
 </style>
 </head>
 <body>
@@ -194,15 +234,61 @@ export class HgGraphView implements vscode.Disposable {
 ${rowsHtml}
 </tbody>
 </table>
+<div id="details">
+    <div class="head"><span id="details-title"></span> <span class="meta" id="details-meta"></span></div>
+    <div class="files" id="details-files"></div>
+</div>
 <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelector('button[data-action=refresh]').addEventListener('click', () =>
         vscode.postMessage({ type: 'refresh' }));
 
+    const details = document.getElementById('details');
+    const detailsTitle = document.getElementById('details-title');
+    const detailsMeta = document.getElementById('details-meta');
+    const detailsFiles = document.getElementById('details-files');
+    let selectedRow = null;
+
+    function showChanges(msg) {
+        details.style.display = 'block';
+        detailsTitle.textContent = 'r' + msg.rev + (msg.desc ? ': ' + msg.desc : '');
+        detailsMeta.textContent = msg.branch ? '(' + msg.branch + ')' : '';
+        detailsFiles.textContent = '';
+        if (!msg.files || msg.files.length === 0) {
+            const none = document.createElement('span');
+            none.className = 'file st-empty';
+            none.textContent = 'no changed files';
+            detailsFiles.appendChild(none);
+            return;
+        }
+        for (const f of msg.files) {
+            const chip = document.createElement('span');
+            chip.className = 'file st-' + f.status;
+            chip.title = 'Click to show diff at r' + msg.rev;
+            const badge = document.createElement('span');
+            badge.className = 'badge';
+            badge.textContent = f.status;
+            chip.appendChild(badge);
+            chip.appendChild(document.createTextNode(f.path));
+            chip.addEventListener('click', () => vscode.postMessage({
+                type: 'fileDiff', rev: msg.rev, node: msg.node, path: f.path, status: f.status
+            }));
+            detailsFiles.appendChild(chip);
+        }
+    }
+
+    window.addEventListener('message', e => {
+        if (e.data && e.data.type === 'changes') { showChanges(e.data); }
+    });
+
     document.querySelectorAll('tr.cs').forEach(tr => {
         const rev = tr.dataset.rev;
         const node = tr.dataset.node;
-        tr.addEventListener('click', () => vscode.postMessage({ type: 'details', rev, node }));
+        tr.addEventListener('click', () => {
+            document.querySelectorAll('tr.cs.selected').forEach(el => el.classList.remove('selected'));
+            tr.classList.add('selected');
+            vscode.postMessage({ type: 'changes', rev, node });
+        });
         tr.addEventListener('contextmenu', e => {
             e.preventDefault();
             const menu = document.createElement('div');

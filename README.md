@@ -12,13 +12,17 @@ similar to the built-in Git extension.
   clicking a file in the **Changes** group and via editor **gutter diff
   decorations** (through `quickDiffProvider`, like the Git extension)
 - Show repository history (`hg log`)
-- **History graph view**: colored revision graph with branches/merges,
-  click a changeset for details, right-click to show its diff or update
-  the working directory to it (`hg update -r`)
+- **History graph view**: colored revision graph with branches/merges.
+  Click a changeset to see its changed files; click a file to see the
+  side-by-side diff *at that commit* (parent → changeset, via revset
+  expressions like `p1(<node>)`). Right-click for details / whole-commit
+  diff / `hg update -r`
 - **Graph tree view in the Source Control area**: like the built-in Git
   extension's Source Control Graph — a `Graph` section appears next to
-  Repositories/Changes listing recent changesets (click for details,
-  context menu for diff / update). Toggle with `hg.showGraphInView`
+  Repositories/Changes listing recent changesets. Each commit is
+  **expandable** and shows the files it changed (M/A/R badges); clicking a
+  file opens the diff at that revision. Context menu: details, whole-commit
+  diff, update. Toggle with `hg.showGraphInView`
 - Branch name in the SCM view label
 - Automatic refresh on file changes
 

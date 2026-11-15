@@ -1,4 +1,4 @@
-import { runHg } from './hg';
+import { parseStatus, runHg } from './hg';
 
 export interface GraphNode {
     rev: number;
@@ -74,6 +74,21 @@ export async function fetchGraph(
         }
     }
     return rows;
+}
+
+export interface ChangesetFile {
+    status: string; // M, A, R ...
+    path: string;
+}
+
+/** Files changed by one changeset (`hg status --change <node>`) */
+export async function fetchChangesetFiles(
+    hgPath: string,
+    root: string,
+    node: string
+): Promise<ChangesetFile[]> {
+    const out = await runHg(hgPath, root, ['--encoding', 'utf-8', 'status', '--change', node]);
+    return parseStatus(out).map(s => ({ status: s.code, path: s.path }));
 }
 
 /** Convert `hg log -G` art into color-per-column HTML spans */

@@ -32,6 +32,10 @@ export class HgContentProvider implements vscode.TextDocumentContentProvider {
         if (!root || !rel) {
             throw new Error(`Invalid hg: URI (missing repo root or path): ${uri.toString()}`);
         }
+        if (rev === 'null') {
+            return ''; // the null revision has no content (added/removed file side)
+        }
+        // rev may be a revset expression like "p1(<node>)" - hg accepts those for -r
         return await runHg(this.hgPath, root, ['cat', '-r', rev, '--', rel.replace(/\\/g, '/')]);
     }
 }

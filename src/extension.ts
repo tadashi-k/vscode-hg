@@ -3,7 +3,7 @@ import { HgContentProvider } from './contentProvider';
 import { HgGraphTree } from './graphTree';
 import { HgGraphView } from './graphView';
 import { HgRepository } from './repository';
-import { showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
+import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
 export class HgExtension implements vscode.Disposable {
     private _repositories: HgRepository[] = [];
@@ -132,6 +132,9 @@ export class HgExtension implements vscode.Disposable {
 
         cmd('hg.showRevisionDiff', (root: string, rev: number, node: string) =>
             showRevisionDiff(this.hgPath, root, rev, node));
+
+        cmd('hg.showFileDiffAtRevision', (root: string, relPath: string, rev: number, node: string, status: string) =>
+            showFileDiffAtRevision(this.hgPath, root, relPath, rev, node, status));
 
         cmd('hg.updateToRevision', async (root: string, rev: number) => {
             await updateToRevision(this.hgPath, root, rev);
