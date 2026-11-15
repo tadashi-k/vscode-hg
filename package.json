@@ -67,6 +67,7 @@
         {
           "id": "hg.graph",
           "name": "Graph",
+          "icon": "$(git-graph)",
           "type": "webview",
           "when": "hg.repoCount >= 1 && config.hg.showGraphInView != false"
         }
