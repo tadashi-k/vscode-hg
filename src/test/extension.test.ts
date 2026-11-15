@@ -12,6 +12,7 @@ const HG_TEST_ENV = process.env.HGRCPATH
 
 let root: string;
 let api: HgExtensionApi;
+let autoActivated = false;
 
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -31,6 +32,14 @@ describe('vscode-hg extension', () => {
         if (!ext) {
             throw new Error(`vscode-hg extension not found, have: ${vscode.extensions.all.map(e => e.id).join(', ')}`);
         }
+
+        // check natural activation (activation events) BEFORE forcing activate()
+        const start = Date.now();
+        while (!ext.isActive && Date.now() - start < 15000) {
+            await sleep(250);
+        }
+        autoActivated = ext.isActive;
+
         api = await ext.activate();
 
         root = vscode.workspace.workspaceFolders![0].uri.fsPath;
@@ -51,6 +60,13 @@ describe('vscode-hg extension', () => {
         fs.appendFileSync(path.join(root, 'main.py'), '// test-run change\n', 'utf8');
 
         await sleep(1500); // wait for detection + refresh
+    });
+
+    it('auto-activates on workspace open (activation events)', () => {
+        if (!autoActivated) {
+            throw new Error('extension was not activated by activation events '
+                + '(onStartupFinished / workspaceContains) before the tests forced activation');
+        }
     });
 
     it('registers a Mercurial source control for the workspace', () => {

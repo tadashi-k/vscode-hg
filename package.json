@@ -17,7 +17,9 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:.hg/hgrc"
+    "onStartupFinished",
+    "workspaceContains:.hg/hgrc",
+    "workspaceContains:.hg/requires"
   ],
   "main": "./out/extension.js",
   "contributes": {
