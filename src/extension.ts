@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { HgAnnotateInlayHintsProvider } from './annotate';
 import { HgContentProvider } from './contentProvider';
-import { HgGraphSidebar } from './graphSidebar';
+import { HgTreeItem, HgGraphTree } from './graphTree';
 import { HgRepository } from './repository';
 import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
@@ -10,7 +10,8 @@ export class HgExtension implements vscode.Disposable {
     private contentProvider?: vscode.Disposable;
     private annotateProvider?: HgAnnotateInlayHintsProvider;
     private annotateInlayDisposable?: vscode.Disposable;
-    private graphSidebar?: HgGraphSidebar;
+    private graphTree?: HgGraphTree;
+    private graphTreeView?: vscode.TreeView<vscode.TreeItem>;
     private hgPath = 'hg';
     private readonly changeEmitter = new vscode.EventEmitter<void>();
     /** Fired when repository state changes (commit, refresh, clean, ...) */
@@ -60,19 +61,18 @@ export class HgExtension implements vscode.Disposable {
         );
 
         const folders = vscode.workspace.workspaceFolders ?? [];
-        // "Graph" webview view in the Source Control view container
+        // "Graph" NATIVE tree view in the Source Control view container
         // (like the built-in Git extension's Source Control Graph)
-        // NOTE: register the provider BEFORE repo detection so the view can
-        // resolve as soon as it becomes visible
-        this.graphSidebar = new HgGraphSidebar(
+        this.graphTree = new HgGraphTree(
             hgPath,
             () => this._repositories.map(r => r.root),
             cb => this.onDidChangeRepos(cb)
         );
-        context.subscriptions.push(
-            this.graphSidebar,
-            vscode.window.registerWebviewViewProvider(HgGraphSidebar.viewId, this.graphSidebar)
-        );
+        this.graphTreeView = vscode.window.createTreeView('hg.graph', {
+            treeDataProvider: this.graphTree
+        });
+        this.graphTree.view = this.graphTreeView;
+        context.subscriptions.push(this.graphTree, this.graphTreeView);
 
         for (const folder of folders) {
             const repo = await HgRepository.detect(hgPath, folder, autoRefresh);
@@ -108,7 +108,7 @@ export class HgExtension implements vscode.Disposable {
             })
         );
 
-        void this.graphSidebar.refresh();
+        void this.graphTree.refresh();
         this.updateContext();
 
         this.registerCommands(context);
@@ -167,17 +167,40 @@ export class HgExtension implements vscode.Disposable {
                 })
             );
 
-        cmd('hg.showRevisionDetails', (root: string, rev: number, node: string) =>
-            showRevisionDetails(this.hgPath, root, rev, node));
+        // these commands serve both positional calls (tests, API) and
+        // view/item/context menu calls (they receive a HgTreeItem)
+        cmd('hg.showRevisionDetails', async (arg: unknown, rev?: number, node?: string) => {
+            if (arg instanceof HgTreeItem && arg.data.kind === 'commit') {
+                await showRevisionDetails(this.hgPath, arg.data.root, arg.data.rev, arg.data.node);
+                return;
+            }
+            if (typeof arg === 'string' && rev !== undefined && node !== undefined) {
+                await showRevisionDetails(this.hgPath, arg, rev, node);
+            }
+        });
 
-        cmd('hg.showRevisionDiff', (root: string, rev: number, node: string) =>
-            showRevisionDiff(this.hgPath, root, rev, node));
+        cmd('hg.showRevisionDiff', async (arg: unknown, rev?: number, node?: string) => {
+            if (arg instanceof HgTreeItem && arg.data.kind === 'commit') {
+                await showRevisionDiff(this.hgPath, arg.data.root, arg.data.rev, arg.data.node);
+                return;
+            }
+            if (typeof arg === 'string' && rev !== undefined && node !== undefined) {
+                await showRevisionDiff(this.hgPath, arg, rev, node);
+            }
+        });
 
         cmd('hg.showFileDiffAtRevision', (root: string, relPath: string, rev: number, node: string, status: string) =>
             showFileDiffAtRevision(this.hgPath, root, relPath, rev, node, status));
 
-        cmd('hg.updateToRevision', async (root: string, rev: number) => {
-            await updateToRevision(this.hgPath, root, rev);
+        cmd('hg.updateToRevision', async (arg: unknown, rev?: number) => {
+            const root = arg instanceof HgTreeItem && arg.data.kind === 'commit'
+                ? arg.data.root
+                : arg;
+            const target = arg instanceof HgTreeItem && arg.data.kind === 'commit'
+                ? arg.data.rev
+                : rev;
+            if (typeof root !== 'string' || target === undefined) { return; }
+            await updateToRevision(this.hgPath, root, target);
             await Promise.all(this._repositories.map(r => r.refresh()));
             this.fireChange();
         });
@@ -275,8 +298,8 @@ export class HgExtension implements vscode.Disposable {
         return this._repositories;
     }
 
-    historyGraph(): HgGraphSidebar | undefined {
-        return this.graphSidebar;
+    historyGraph(): HgGraphTree | undefined {
+        return this.graphTree;
     }
 
     /** Resolve which repository a command targets (arg may be repo/group/resource) */
@@ -293,7 +316,8 @@ export class HgExtension implements vscode.Disposable {
     }
 
     dispose(): void {
-        this.graphSidebar?.dispose();
+        this.graphTreeView?.dispose();
+        this.graphTree?.dispose();
         this.changeEmitter.dispose();
         for (const r of this._repositories) { r.dispose(); }
         this._repositories = [];
@@ -320,8 +344,8 @@ let extension: HgExtension | undefined;
 
 export interface HgExtensionApi {
     repositories(): HgRepository[];
-    /** The "Graph" webview view in the Source Control area (rows()/changedFiles()) */
-    historyGraph(): HgGraphSidebar | undefined;
+    /** The "Graph" native tree view in the Source Control area (rows()/changedFiles()) */
+    historyGraph(): HgGraphTree | undefined;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<HgExtensionApi> {

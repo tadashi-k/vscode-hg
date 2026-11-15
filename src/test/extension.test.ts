@@ -116,19 +116,12 @@ describe('vscode-hg extension', () => {
         }
     });
 
-    it('resolves the Graph webview view in the Source Control area', async function () {
-        this.timeout(40000);
+    it('creates the native Graph tree view in the Source Control area', async function () {
         const graph = api.historyGraph();
-        if (!graph) { throw new Error('Graph view not created'); }
-        if (graph.isResolved) { return; }
-        // focus the view -> VS Code opens the SCM container and resolves it
-        await vscode.commands.executeCommand('hg.graph.focus');
-        const start = Date.now();
-        while (!graph.isResolved && Date.now() - start < 20000) {
-            await sleep(250);
-        }
+        if (!graph) { throw new Error('Graph tree view not created'); }
+        // a native TreeView is attached synchronously at activation
         if (!graph.isResolved) {
-            throw new Error('Graph webview view did not resolve (check "type": "webview" in views contribution)');
+            throw new Error('Graph tree view was not attached (createTreeView missing?)');
         }
     });
 
@@ -162,24 +155,33 @@ describe('vscode-hg extension', () => {
         void mainUri;
     });
 
-    it('captures the rendered Graph webview markup', async function () {
+    it('renders native tree items with author description, hover tooltip and art icon', async function () {
         this.timeout(40000);
         const graph = api.historyGraph();
         if (!graph) { throw new Error('Graph view not created'); }
-        if (!graph.isResolved) {
-            await vscode.commands.executeCommand('hg.graph.focus');
-            const start = Date.now();
-            while (!graph.isResolved && Date.now() - start < 20000) {
-                await sleep(250);
-            }
+        await graph.refresh();
+        await sleep(300);
+        const items = await graph.dumpTree();
+        const commits = items.filter(i => i.kind === 'commit');
+        if (commits.length < 3) {
+            throw new Error(`expected at least 3 commit tree items, got ${commits.length}`);
         }
-        const html = await graph.dumpHtml();
-        if (!html.includes('row commit')) {
-            throw new Error(`Graph webview markup has no commit rows: ${html.slice(0, 200)}`);
+        const first = commits[0];
+        if (!first.label) {
+            throw new Error('commit tree item has no label (commit message)');
         }
-        // save for visual inspection
-        const out = path.join(__dirname, '..', '..', 'graph-dump.html');
-        fs.writeFileSync(out, html, 'utf8');
+        if (!first.description) {
+            throw new Error('commit tree item has no description (author) - git shows the author right of the title');
+        }
+        if (!first.tooltip || !(/r\d+/.test(first.tooltip) && first.node && first.tooltip.includes(first.node))) {
+            throw new Error(`commit tree item tooltip misses rev/node: ${first.tooltip}`);
+        }
+        if (!first.hasIcon) {
+            throw new Error('commit tree item has no graph art icon (iconPath missing)');
+        }
+        // expanding a commit lazily lists its changed files as children
+        const files = await graph.changedFiles(first.node);
+        void files;
     });
 
     it('lists changed files per commit and diffs a file at that revision', async function () {

@@ -74,12 +74,35 @@
           "id": "hg.graph",
           "name": "Graph",
           "icon": "$(git-graph)",
-          "type": "webview",
           "when": "hg.repoCount >= 1 && config.hg.showGraphInView != false"
         }
       ]
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "hg.refresh",
+          "group": "navigation",
+          "when": "view == hg.graph"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "hg.showRevisionDetails",
+          "when": "view == hg.graph && viewItem == hg.commit",
+          "group": "1_details"
+        },
+        {
+          "command": "hg.showRevisionDiff",
+          "when": "view == hg.graph && viewItem == hg.commit",
+          "group": "1_details"
+        },
+        {
+          "command": "hg.updateToRevision",
+          "when": "view == hg.graph && viewItem == hg.commit",
+          "group": "2_update"
+        }
+      ],
       "editor/title": [
         {
           "command": "hg.annotate",

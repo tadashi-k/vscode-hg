@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { parseStatus, runHg } from './hg';
 
 export interface GraphNode {
@@ -91,27 +92,97 @@ export async function fetchChangesetFiles(
     return parseStatus(out).map(s => ({ status: s.code, path: s.path }));
 }
 
-/** Convert `hg log -G` art into color-per-column HTML spans */
-export function artToHtml(art: string): string {
-    const palette = [
-        'var(--hg-graph-c1)', 'var(--hg-graph-c2)', 'var(--hg-graph-c3)',
-        'var(--hg-graph-c4)', 'var(--hg-graph-c5)', 'var(--hg-graph-c6)'
-    ];
-    let html = '';
+const PALETTE = ['#4fc1ff', '#b180d7', '#f19f39', '#6cd9cc', '#e06c75', '#98c379'];
+
+export function colorAt(col: number): string {
+    return PALETTE[((col % PALETTE.length) + PALETTE.length) % PALETTE.length];
+}
+
+/**
+ * Render one row of `hg log -G` art as SVG elements, styled like the
+ * built-in Git graph: lanes run continuously and branch/merge edges are
+ * smooth S-curves. Geometry: char at index i occupies column i;
+ * x-center = (i + 0.5) * COL_W. The art is drawn inside a row of height
+ * `height` shifted down by `yOffset` (icons center it in a square box).
+ */
+export function artSvgElements(
+    art: string,
+    isCommit: boolean,
+    height: number,
+    yOffset: number,
+    colW = 11
+): string {
+    const parts: string[] = [];
+    const x = (i: number): number => (i + 0.5) * colW;
+    const W = '1.5';
+    const NODE_R = 4;
+
     for (let i = 0; i < art.length; i++) {
         const c = art[i];
-        if (c === ' ') {
-            html += ' ';
-            continue;
-        }
-        const color = palette[i % palette.length];
-        if (c === 'o' || c === '@' || c === 'x') {
-            html += `<span class="hg-node" style="color:${color}">&#9679;</span>`;
-        } else {
-            html += `<span style="color:${color}">${escapeHtml(c)}</span>`;
+        if (c === ' ') { continue; }
+        const color = colorAt(i);
+        const xi = x(i);
+        switch (c) {
+            case '|':
+            case ':':
+            case '.':
+            case '+':
+                parts.push(`<line x1="${xi}" y1="${yOffset}" x2="${xi}" y2="${yOffset + height}" stroke="${color}" stroke-width="${W}"/>`);
+                break;
+            case '\\': {
+                // edge moves from column i-1 (top) to column i (bottom),
+                // drawn as a smooth S-curve like Git
+                const x1 = x(i - 1);
+                parts.push(`<path d="M ${x1} ${yOffset} Q ${(x1 + xi) / 2} ${yOffset + height / 2} ${xi} ${yOffset + height}" stroke="${color}" stroke-width="${W}" fill="none"/>`);
+                break;
+            }
+            case '/': {
+                // edge moves from column i (top) to column i-1 (bottom)
+                const x2 = x(i - 1);
+                parts.push(`<path d="M ${xi} ${yOffset} Q ${(xi + x2) / 2} ${yOffset + height / 2} ${x2} ${yOffset + height}" stroke="${color}" stroke-width="${W}" fill="none"/>`);
+                break;
+            }
+            case '_':
+                parts.push(`<line x1="${xi}" y1="${yOffset + height / 2}" x2="${xi + colW}" y2="${yOffset + height / 2}" stroke="${color}" stroke-width="${W}"/>`);
+                break;
+            case 'o':
+            case '@':
+            case 'x': {
+                // '@' marks the working-copy parent (the newest revision);
+                // draw it as a hollow ring like Git draws the HEAD commit
+                const r = c === '@' ? 5 : NODE_R;
+                const cy = yOffset + height / 2;
+                if (isCommit) {
+                    parts.push(`<line x1="${xi}" y1="${yOffset}" x2="${xi}" y2="${cy - r}" stroke="${color}" stroke-width="${W}"/>`);
+                    parts.push(`<line x1="${xi}" y1="${cy + r}" x2="${xi}" y2="${yOffset + height}" stroke="${color}" stroke-width="${W}"/>`);
+                }
+                if (c === '@') {
+                    parts.push(`<circle cx="${xi}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="2"/>`);
+                } else {
+                    parts.push(`<circle cx="${xi}" cy="${cy}" r="${r}" fill="${color}"${c === 'x' ? ' fill-opacity="0.4"' : ''}/>`);
+                }
+                break;
+            }
+            default:
+                break;
         }
     }
-    return html;
+    return parts.join('');
+}
+
+/**
+ * Icon for a tree row: the row's art inside a square viewBox so the icon
+ * fills the tree's 16x16 icon box; the art is vertically centered. All
+ * rows share the same viewBox width (longest art), so nodes stay aligned
+ * across rows.
+ */
+export function rowIconUri(art: string, isCommit: boolean, cols: number): vscode.Uri {
+    const s = Math.max(2, cols) * 11;
+    const yOffset = (s - 22) / 2;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">`
+        + artSvgElements(art, isCommit, 22, yOffset)
+        + '</svg>';
+    return vscode.Uri.parse('data:image/svg+xml;base64,' + Buffer.from(svg, 'utf8').toString('base64'));
 }
 
 export function escapeHtml(s: string): string {
