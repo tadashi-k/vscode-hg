@@ -60,17 +60,6 @@
         "category": "Mercurial"
       },
       {
-        "command": "hg.log",
-        "title": "Show History",
-        "category": "Mercurial"
-      },
-      {
-        "command": "hg.showGraph",
-        "title": "Show History Graph",
-        "category": "Mercurial",
-        "icon": "$(graph)"
-      },
-      {
         "command": "hg.showRevisionDetails",
         "title": "Show Revision Details",
         "category": "Mercurial"
@@ -136,11 +125,6 @@
         },
         {
           "command": "hg.refresh",
-          "group": "navigation",
-          "when": "scmProvider == hg"
-        },
-        {
-          "command": "hg.showGraph",
           "group": "navigation",
           "when": "scmProvider == hg"
         }

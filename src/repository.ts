@@ -34,11 +34,7 @@ export class HgRepository implements vscode.Disposable {
         };
 
         this.branchItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-        this.branchItem.command = 'hg.log';
         this.disposables.push(this.branchItem);
-        this.repo.statusBarCommands = [
-            { command: 'hg.log', title: 'Mercurial: Show History' }
-        ];
 
         this.workingGroup = this.repo.createResourceGroup('working', 'Changes');
         this.untrackedGroup = this.repo.createResourceGroup('untracked', 'Untracked Files');
@@ -172,12 +168,6 @@ export class HgRepository implements vscode.Disposable {
             // fall back: purge extension may not be enabled
             showHgError(new Error('hg purge failed. Is the "purge" extension enabled? Run: hg config extensions.purge='));
         }
-    }
-
-    async showLog(): Promise<void> {
-        const log = await runHg(this.hgPath, this.root, ['log', '-l', '50', '--template', '{rev}  {node|short}  {author|user}  {date|isodate}  {branch}\n    {desc|firstline}\n\n']);
-        const doc = await vscode.workspace.openTextDocument({ content: log, language: 'plaintext' });
-        await vscode.window.showTextDocument(doc);
     }
 
     async showDiff(fileUri: vscode.Uri): Promise<void> {

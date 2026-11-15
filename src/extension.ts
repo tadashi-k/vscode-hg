@@ -218,11 +218,6 @@ export class HgExtension implements vscode.Disposable {
             await repo.showDiff(uri);
         });
 
-        cmd('hg.log', async (...args) => {
-            const repo = this.getRepo(args[0]);
-            if (!repo) { return; }
-            await repo.showLog();
-        });
     }
 
     /** Exposed as the extension's API (tests and other extensions can consume this) */
