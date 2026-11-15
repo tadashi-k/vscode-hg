@@ -1,8 +1,13 @@
-.vscode/**
+# sources (only out/ is shipped)
 src/**
+tsconfig.json
+# dev tooling
 node_modules/**
+.vscode-test/**
+.vscode/**
+# misc
+package-lock.json
+**/*.map
+# test code never ships
 out/test/**
 .gitignore
-tsconfig.json
-**/*.ts
-**/*.map
