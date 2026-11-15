@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { alignBlames, parseAnnotate } from '../annotate';
 import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
 
@@ -183,6 +184,43 @@ describe('vscode-hg extension', () => {
             'hg.showFileDiffAtRevision',
             root, first.path, target.node!.rev, target.node.node, first.status
         );
+    });
+
+    it('parses hg annotate -u -d -q output into per-line blame prefixes', () => {
+        const out = [
+            'tadashi 2025-01-14: first line',
+            'alice 2024-12-31 23:59:59 +0900: second line',
+            '',
+            'no-separator-line'
+        ].join('\n');
+        const hints = parseAnnotate(out);
+        if (hints.length !== 2) {
+            throw new Error(`expected 2 hints, got ${hints.length}: ${JSON.stringify(hints)}`);
+        }
+        if (hints[0] !== 'tadashi 2025-01-14') {
+            throw new Error(`unexpected first hint: ${hints[0]}`);
+        }
+        if (hints[1] !== 'alice 2024-12-31 23:59:59 +0900') {
+            throw new Error(`unexpected second hint: ${hints[1]}`);
+        }
+        // dates can contain ': ' inside? no - hg output separates with ': ' once,
+        // but the separator itself must be found at the FIRST occurrence
+        if (parseAnnotate('').length !== 0) {
+            throw new Error('empty output must parse to no hints');
+        }
+    });
+
+    it('right-aligns blame prefixes to a common column', () => {
+        const out = alignBlames(['bob 2026-02-08', 'kobayasi 2026-03-28']);
+        if (out[0] !== '      bob 2026-02-08' || out[1] !== 'kobayasi 2026-03-28') {
+            throw new Error(`unexpected alignment: ${JSON.stringify(out)}`);
+        }
+        if (out[0].length !== out[1].length) {
+            throw new Error('aligned prefixes must have equal length');
+        }
+        if (JSON.stringify(alignBlames([])) !== '[]') {
+            throw new Error('empty input must stay empty');
+        }
     });
 
     it('commits all changes via hg.commit', async function () {

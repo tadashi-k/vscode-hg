@@ -60,6 +60,12 @@
         "command": "hg.showDiff",
         "title": "Show Diff",
         "category": "Mercurial"
+      },
+      {
+        "command": "hg.annotate",
+        "title": "Toggle Annotate",
+        "category": "Mercurial",
+        "icon": "$(versions)"
       }
     ],
     "views": {
@@ -74,6 +80,13 @@
       ]
     },
     "menus": {
+      "editor/title": [
+        {
+          "command": "hg.annotate",
+          "group": "navigation",
+          "when": "hg.repoCount >= 1 && resourceScheme != hg"
+        }
+      ],
       "scm/title": [
         {
           "command": "hg.commit",

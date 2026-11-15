@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { HgAnnotateInlayHintsProvider } from './annotate';
 import { HgContentProvider } from './contentProvider';
 import { HgGraphSidebar } from './graphSidebar';
 import { HgRepository } from './repository';
@@ -7,6 +8,8 @@ import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateTo
 export class HgExtension implements vscode.Disposable {
     private _repositories: HgRepository[] = [];
     private contentProvider?: vscode.Disposable;
+    private annotateProvider?: HgAnnotateInlayHintsProvider;
+    private annotateInlayDisposable?: vscode.Disposable;
     private graphSidebar?: HgGraphSidebar;
     private hgPath = 'hg';
     private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -39,6 +42,22 @@ export class HgExtension implements vscode.Disposable {
             new HgContentProvider(hgPath)
         );
         context.subscriptions.push(this.contentProvider);
+
+        // annotate mode ("blame" beside line numbers)
+        this.annotateProvider = new HgAnnotateInlayHintsProvider(
+            hgPath,
+            (uri: vscode.Uri) =>
+                this._repositories.find(r => uri.fsPath.startsWith(r.root))?.root
+        );
+        // annotate mode defaults to OFF per editor; toggled via hg.annotate
+        this.annotateInlayDisposable = vscode.languages.registerInlayHintsProvider(
+            '*',
+            this.annotateProvider
+        );
+        context.subscriptions.push(
+            this.annotateInlayDisposable,
+            this.createAnnotateRefreshListeners()
+        );
 
         const folders = vscode.workspace.workspaceFolders ?? [];
         // "Graph" webview view in the Source Control view container
@@ -98,6 +117,38 @@ export class HgExtension implements vscode.Disposable {
     private updateContext(): void {
         void vscode.commands.executeCommand(
             'setContext', 'hg.repoCount', this._repositories.length
+        );
+        this.updateAnnotateContext();
+    }
+
+    /** annotate toggle state of the ACTIVE editor, for the title-bar button */
+    private updateAnnotateContext(): void {
+        const uri = vscode.window.activeTextEditor?.document.uri;
+        void vscode.commands.executeCommand(
+            'setContext', 'hg.annotateEnabled',
+            uri ? this.annotateProvider?.isEnabledFor(uri) === true : false
+        );
+    }
+
+    /** Keep annotate hints fresh across editor switches, edits and commits */
+    private createAnnotateRefreshListeners(): vscode.Disposable {
+        const fire = () => { this.annotateProvider?.invalidate(); };
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const debouncedFire = () => {
+            clearTimeout(timer);
+            timer = setTimeout(fire, 500);
+        };
+        return vscode.Disposable.from(
+            vscode.window.onDidChangeActiveTextEditor(() => {
+                this.updateAnnotateContext();
+                fire();
+            }),
+            vscode.workspace.onDidChangeTextDocument(e => {
+                if (!e.contentChanges.length) { return; }
+                // debounce typing; refresh 500 ms after the last edit
+                debouncedFire();
+            }),
+            this.onDidChangeRepos(fire)
         );
     }
 
@@ -195,6 +246,16 @@ export class HgExtension implements vscode.Disposable {
                 await repo.clean();
                 this.fireChange();
             }
+        });
+
+        cmd('hg.annotate', async (resource: unknown) => {
+            // editor/title buttons pass the document's URI as the first arg
+            const uri = resource instanceof vscode.Uri
+                ? resource
+                : vscode.window.activeTextEditor?.document.uri;
+            if (!uri || !this.annotateProvider) { return; }
+            this.annotateProvider.toggleFor(uri);
+            this.updateAnnotateContext();
         });
 
         cmd('hg.showDiff', async (...args) => {
