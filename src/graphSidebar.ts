@@ -3,14 +3,19 @@ import { artToHtml, escapeHtml, fetchChangesetFiles, fetchGraph, GraphRow } from
 import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
 interface Message {
-    type: 'refresh' | 'changes' | 'fileDiff' | 'commitDiff' | 'update' | 'details';
+    type: 'refresh' | 'changes' | 'fileDiff' | 'commitDiff' | 'update' | 'details' | 'dump';
     rev?: number;
     node?: string;
     path?: string;
     status?: string;
+    /** reply payload of 'dump' */
+    html?: string;
 }
 
 const COL_W = 11;
+/** every row is one text line high, like the built-in Git graph */
+const ROW_H = 22;
+const NODE_R = 4;
 
 // hex palette (webview SVG can use plain hex; matches CSS var palette order)
 const PALETTE = ['#4fc1ff', '#b180d7', '#f19f39', '#6cd9cc', '#e06c75', '#98c379'];
@@ -20,49 +25,62 @@ function colorAt(col: number): string {
 }
 
 /**
- * Render one row of `hg log -G` art as an SVG cell.
+ * Render one row of `hg log -G` art as an SVG cell, styled like the
+ * built-in Git graph: every row is one text line high, lanes run
+ * continuously through the rows and branch/merge edges are smooth
+ * S-curves.
  * Geometry: char at index i occupies column i; x-center = (i + 0.5) * COL_W.
- *  '|' vertical at its column;  '\' top(x(i-1)) -> bottom(x(i));
+ *  '|' vertical at its column;  '\\' top(x(i-1)) -> bottom(x(i));
  *  '/' top(x(i)) -> bottom(x(i-1)); node chars get a dot with vertical stubs.
  */
-function rowArtSvg(art: string, h: number, isCommit: boolean): string {
-    const width = Math.max(art.length, 2) * COL_W;
+function rowArtSvg(art: string, isCommit: boolean, width: number, h: number = ROW_H): string {
     const parts: string[] = [];
     const x = (i: number): number => (i + 0.5) * COL_W;
+    const W = '1.5';
 
     for (let i = 0; i < art.length; i++) {
         const c = art[i];
+        if (c === ' ') { continue; }
         const color = colorAt(i);
         const xi = x(i);
         switch (c) {
-            case ' ':
-                break;
             case '|':
             case ':':
             case '.':
             case '+':
-                parts.push(`<line x1="${xi}" y1="0" x2="${xi}" y2="${h}" stroke="${color}" stroke-width="1.5"/>`);
+                parts.push(`<line x1="${xi}" y1="0" x2="${xi}" y2="${h}" stroke="${color}" stroke-width="${W}"/>`);
                 break;
-            case '\\':
-                // edge moves from column i-1 (top) to column i (bottom)
-                parts.push(`<line x1="${xi - COL_W}" y1="0" x2="${xi}" y2="${h}" stroke="${color}" stroke-width="1.5"/>`);
+            case '\\': {
+                // edge moves from column i-1 (top) to column i (bottom),
+                // drawn as a smooth S-curve like Git
+                const x1 = x(i - 1);
+                parts.push(`<path d="M ${x1} 0 Q ${(x1 + xi) / 2} ${h / 2} ${xi} ${h}" stroke="${color}" stroke-width="${W}" fill="none"/>`);
                 break;
-            case '/':
+            }
+            case '/': {
                 // edge moves from column i (top) to column i-1 (bottom)
-                parts.push(`<line x1="${xi}" y1="0" x2="${xi - COL_W}" y2="${h}" stroke="${color}" stroke-width="1.5"/>`);
+                const x2 = x(i - 1);
+                parts.push(`<path d="M ${xi} 0 Q ${(xi + x2) / 2} ${h / 2} ${x2} ${h}" stroke="${color}" stroke-width="${W}" fill="none"/>`);
                 break;
+            }
             case '_':
-                parts.push(`<line x1="${xi}" y1="${h / 2}" x2="${xi + COL_W}" y2="${h / 2}" stroke="${color}" stroke-width="1.5"/>`);
+                parts.push(`<line x1="${xi}" y1="${h / 2}" x2="${xi + COL_W}" y2="${h / 2}" stroke="${color}" stroke-width="${W}"/>`);
                 break;
             case 'o':
             case '@':
             case 'x': {
-                const r = 3.5;
+                // '@' marks the working-copy parent (the newest revision);
+                // draw it as a hollow ring like Git draws the HEAD commit
+                const r = c === '@' ? 5 : NODE_R;
                 if (isCommit) {
-                    parts.push(`<line x1="${xi}" y1="0" x2="${xi}" y2="${h / 2 - r}" stroke="${color}" stroke-width="1.5"/>`);
-                    parts.push(`<line x1="${xi}" y1="${h / 2 + r}" x2="${xi}" y2="${h}" stroke="${color}" stroke-width="1.5"/>`);
+                    parts.push(`<line x1="${xi}" y1="0" x2="${xi}" y2="${h / 2 - r}" stroke="${color}" stroke-width="${W}"/>`);
+                    parts.push(`<line x1="${xi}" y1="${h / 2 + r}" x2="${xi}" y2="${h}" stroke="${color}" stroke-width="${W}"/>`);
                 }
-                parts.push(`<circle cx="${xi}" cy="${h / 2}" r="${r}" fill="${color}"${c === 'x' ? ' fill-opacity="0.4"' : ''}/>`);
+                if (c === '@') {
+                    parts.push(`<circle cx="${xi}" cy="${h / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="2"/>`);
+                } else {
+                    parts.push(`<circle cx="${xi}" cy="${h / 2}" r="${r}" fill="${color}"${c === 'x' ? ' fill-opacity="0.4"' : ''}/>`);
+                }
                 break;
             }
             default:
@@ -102,6 +120,28 @@ export class HgGraphSidebar implements vscode.WebviewViewProvider, vscode.Dispos
     get isResolved(): boolean {
         return this.view !== undefined;
     }
+
+    /**
+     * Ask the webview for its current rendered markup (tests/debugging).
+     * Resolves to '' if the view is not resolved or does not answer in time.
+     */
+    dumpHtml(): Promise<string> {
+        return new Promise(resolve => {
+            if (!this.view) { resolve(''); return; }
+            let settled = false;
+            const done = (html: string) => {
+                if (settled) { return; }
+                settled = true;
+                this.dumpResolve = undefined;
+                resolve(html);
+            };
+            this.dumpResolve = done;
+            void this.view.webview.postMessage({ type: 'dump' });
+            setTimeout(() => done(''), 5000);
+        });
+    }
+
+    private dumpResolve?: (html: string) => void;
 
     /** Files changed by a changeset (extension API / tests) */
     async changedFiles(node: string): Promise<{ status: string; path: string }[]> {
@@ -165,6 +205,11 @@ export class HgGraphSidebar implements vscode.WebviewViewProvider, vscode.Dispos
                         await showRevisionDetails(this.hgPath, root, msg.rev, msg.node);
                     }
                     break;
+                case 'dump':
+                    if (this.dumpResolve && typeof msg.html === 'string') {
+                        this.dumpResolve(msg.html);
+                    }
+                    break;
                 case 'update':
                     if (msg.rev !== undefined) {
                         await updateToRevision(this.hgPath, root, msg.rev);
@@ -181,20 +226,34 @@ export class HgGraphSidebar implements vscode.WebviewViewProvider, vscode.Dispos
         const nonce = Math.random().toString(36).slice(2);
         const root = this.getRepoRoots()[0] ?? '';
 
+        // fixed-width graph gutter so the text column lines up (like Git)
+        const artWidth = Math.max(3, ...this.rowsCache.map(r => r.art.length)) * COL_W;
+
         const rowsHtml = this.rowsCache.map(row => {
             const isCommit = !!row.node;
-            const h = isCommit ? 38 : 8;
-            const art = rowArtSvg(row.art, h, isCommit);
+            // hg's `log -G` prints a pure '|' connector row between every
+            // pair of changesets; Git has no such spacing, so collapse
+            // them to zero height (the lane stays continuous via the
+            // commit rows' line stubs). Rows carrying curves/merges keep
+            // full height so the edges remain visible.
+            const collapse = !isCommit && /^[|:. ]*$/.test(row.art.trimEnd());
+            const art = rowArtSvg(row.art, isCommit, artWidth, collapse ? 0 : ROW_H);
             if (!isCommit) {
-                return `<div class="row edge">${art}<div class="info"></div></div>`;
+                return `<div class="row edge${collapse ? ' collapse' : ''}">`
+                    + (collapse ? '' : `${art}<div class="info"></div>`)
+                    + `</div>`;
             }
             const n = row.node!;
-            return `<div class="row commit" data-rev="${n.rev}" data-node="${escapeHtml(n.node)}" title="Click to show changed files">
+            return `<div class="row commit" data-rev="${n.rev}" data-node="${escapeHtml(n.node)}">
                 ${art}
                 <div class="info">
-                    <div class="title">${escapeHtml(n.desc)}</div>
-                    <div class="meta">r${n.rev} · ${escapeHtml(n.branch)} · ${escapeHtml(n.user)} · ${escapeHtml(n.date)}</div>
+                    <div class="title"><span class="desc">${escapeHtml(n.desc)}</span><span class="author">${escapeHtml(n.user)}</span></div>
                     <div class="files" data-rev="${n.rev}"></div>
+                </div>
+                <div class="tooltip">
+                    <div class="tt-title">${escapeHtml(n.desc)}</div>
+                    <div class="tt-meta">${escapeHtml(n.user)} · r${n.rev} · ${escapeHtml(n.branch)} · ${escapeHtml(n.date)}</div>
+                    <div class="tt-node">${escapeHtml(n.node)}</div>
                 </div>
             </div>`;
         }).join('\n');
@@ -232,14 +291,42 @@ export class HgGraphSidebar implements vscode.WebviewViewProvider, vscode.Dispos
         padding: 3px 9px; cursor: pointer; font-size: 11px;
     }
     button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-    .row { display: flex; align-items: stretch; }
+    .row { display: flex; align-items: center; height: 22px; }
+    .row.edge.collapse { height: 0; }
     .row .art { flex: none; }
-    .row.commit { cursor: pointer; padding: 2px 0; }
+    .row.commit { cursor: pointer; position: relative; }
     .row.commit:hover { background: var(--vscode-list-hoverBackground); }
-    .row.commit.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-    .info { min-width: 0; padding: 3px 8px 3px 2px; }
-    .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .meta { opacity: .7; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row.commit.selected {
+        background: var(--vscode-list-activeSelectionBackground);
+        color: var(--vscode-list-activeSelectionForeground);
+        height: auto;
+    }
+    .row.commit.selected > .art { align-self: flex-start; }
+    .info { min-width: 0; padding: 0 8px 0 2px; }
+    .title { display: flex; gap: 10px; align-items: baseline; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title .author { opacity: .6; flex: none; }
+    .title .desc { overflow: hidden; text-overflow: ellipsis; }
+    /* Git-like rich hover: shown next to the row, never captures the mouse */
+    .tooltip {
+        display: none;
+        position: absolute;
+        left: var(--art-w, 40px);
+        top: 0;
+        z-index: 10;
+        min-width: 240px; max-width: 460px;
+        padding: 6px 10px;
+        background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, #252526));
+        color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editorWidget-foreground, inherit));
+        border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-editorWidget-border, #454545));
+        border-radius: 3px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+        pointer-events: none;
+        white-space: normal;
+    }
+    .row.commit:hover > .tooltip { display: block; }
+    .tt-title { font-weight: 600; }
+    .tt-meta { opacity: .8; margin-top: 3px; }
+    .tt-node { opacity: .5; font-size: 11px; margin-top: 3px; }
     .files { display: none; margin: 4px 0 2px 8px; }
     .files.open { display: block; }
     .file { display: flex; gap: 6px; padding: 1px 6px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
@@ -262,7 +349,7 @@ export class HgGraphSidebar implements vscode.WebviewViewProvider, vscode.Dispos
     <span class="repo">${escapeHtml(root)}</span>
     <button data-action="refresh">Refresh</button>
 </div>
-<div id="list">
+<div id="list" style="--art-w: ${artWidth}px">
 ${rowsHtml}
 </div>
 <script nonce="${nonce}">
@@ -321,6 +408,9 @@ ${rowsHtml}
     window.addEventListener('message', e => {
         const m = e.data;
         if (m && m.type === 'changes') { renderFiles(m.rev, m.node, m.desc, m.branch, m.files); }
+        if (m && m.type === 'dump') {
+            vscode.postMessage({ type: 'dump', html: document.getElementById('list').outerHTML });
+        }
     });
 
     list.querySelectorAll('.row.commit').forEach(row => {

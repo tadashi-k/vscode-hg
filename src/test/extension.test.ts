@@ -162,6 +162,26 @@ describe('vscode-hg extension', () => {
         void mainUri;
     });
 
+    it('captures the rendered Graph webview markup', async function () {
+        this.timeout(40000);
+        const graph = api.historyGraph();
+        if (!graph) { throw new Error('Graph view not created'); }
+        if (!graph.isResolved) {
+            await vscode.commands.executeCommand('hg.graph.focus');
+            const start = Date.now();
+            while (!graph.isResolved && Date.now() - start < 20000) {
+                await sleep(250);
+            }
+        }
+        const html = await graph.dumpHtml();
+        if (!html.includes('row commit')) {
+            throw new Error(`Graph webview markup has no commit rows: ${html.slice(0, 200)}`);
+        }
+        // save for visual inspection
+        const out = path.join(__dirname, '..', '..', 'graph-dump.html');
+        fs.writeFileSync(out, html, 'utf8');
+    });
+
     it('lists changed files per commit and diffs a file at that revision', async function () {
         this.timeout(30000);
         const graph = api.historyGraph();
