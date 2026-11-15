@@ -213,7 +213,8 @@ describe('vscode-hg extension', () => {
 
     it('right-aligns blame prefixes to a common column', () => {
         const out = alignBlames(['bob 2026-02-08', 'kobayasi 2026-03-28']);
-        if (out[0] !== '      bob 2026-02-08' || out[1] !== 'kobayasi 2026-03-28') {
+        // longest = 'kobayasi 2026-03-28' (19 chars), so pad 19-14 = 5 spaces
+        if (out[0] !== '     bob 2026-02-08' || out[1] !== 'kobayasi 2026-03-28') {
             throw new Error(`unexpected alignment: ${JSON.stringify(out)}`);
         }
         if (out[0].length !== out[1].length) {
