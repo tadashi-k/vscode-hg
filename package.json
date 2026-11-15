@@ -60,26 +60,6 @@
         "command": "hg.showDiff",
         "title": "Show Diff",
         "category": "Mercurial"
-      },
-      {
-        "command": "hg.showRevisionDetails",
-        "title": "Show Revision Details",
-        "category": "Mercurial"
-      },
-      {
-        "command": "hg.showRevisionDiff",
-        "title": "Show Revision Diff",
-        "category": "Mercurial"
-      },
-      {
-        "command": "hg.showFileDiffAtRevision",
-        "title": "Show File Diff at Revision",
-        "category": "Mercurial"
-      },
-      {
-        "command": "hg.updateToRevision",
-        "title": "Update to Revision",
-        "category": "Mercurial"
       }
     ],
     "views": {
@@ -87,38 +67,12 @@
         {
           "id": "hg.graph",
           "name": "Graph",
+          "type": "webview",
           "when": "hg.repoCount >= 1 && config.hg.showGraphInView != false"
         }
       ]
     },
     "menus": {
-      "view/item/context": [
-        {
-          "command": "hg.showRevisionDetails",
-          "when": "view == hg.graph && item == hgRevision",
-          "group": "0_view"
-        },
-        {
-          "command": "hg.showRevisionDiff",
-          "when": "view == hg.graph && item == hgRevision",
-          "group": "1_modification"
-        },
-        {
-          "command": "hg.updateToRevision",
-          "when": "view == hg.graph && item == hgRevision",
-          "group": "2_control"
-        },
-        {
-          "command": "hg.showFileDiffAtRevision",
-          "when": "view == hg.graph && item == hgRevisionFile",
-          "group": "1_modification"
-        },
-        {
-          "command": "hg.updateToRevision",
-          "when": "view == hg.graph",
-          "group": "2_control"
-        }
-      ],
       "scm/title": [
         {
           "command": "hg.commit",

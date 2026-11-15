@@ -17,12 +17,14 @@ similar to the built-in Git extension.
   side-by-side diff *at that commit* (parent → changeset, via revset
   expressions like `p1(<node>)`). Right-click for details / whole-commit
   diff / `hg update -r`
-- **Graph tree view in the Source Control area**: like the built-in Git
+- **Graph view in the Source Control area**: like the built-in Git
   extension's Source Control Graph — a `Graph` section appears next to
-  Repositories/Changes listing recent changesets. Each commit is
-  **expandable** and shows the files it changed (M/A/R badges); clicking a
-  file opens the diff at that revision. Context menu: details, whole-commit
-  diff, update. Toggle with `hg.showGraphInView`
+  Repositories/Changes, rendering the revision graph with colored SVG
+  lanes and dots (branches/merges drawn as real curves, not ASCII art).
+  Click a commit to expand its changed files (M/A/R badges); click a file
+  to open the side-by-side diff *at that commit*. Right-click for
+  details / whole-commit diff / `hg update -r`. Toggle with
+  `hg.showGraphInView`
 - Branch name in the SCM view label
 - Automatic refresh on file changes
 

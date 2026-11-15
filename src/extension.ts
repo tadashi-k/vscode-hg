@@ -1,15 +1,13 @@
 import * as vscode from 'vscode';
 import { HgContentProvider } from './contentProvider';
-import { HgGraphTree } from './graphTree';
-import { HgGraphView } from './graphView';
+import { HgGraphSidebar } from './graphSidebar';
 import { HgRepository } from './repository';
 import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
 export class HgExtension implements vscode.Disposable {
     private _repositories: HgRepository[] = [];
     private contentProvider?: vscode.Disposable;
-    private graphView?: HgGraphView;
-    private graphTree?: HgGraphTree;
+    private graphSidebar?: HgGraphSidebar;
     private hgPath = 'hg';
     private readonly changeEmitter = new vscode.EventEmitter<void>();
     /** Fired when repository state changes (commit, refresh, clean, ...) */
@@ -43,6 +41,20 @@ export class HgExtension implements vscode.Disposable {
         context.subscriptions.push(this.contentProvider);
 
         const folders = vscode.workspace.workspaceFolders ?? [];
+        // "Graph" webview view in the Source Control view container
+        // (like the built-in Git extension's Source Control Graph)
+        // NOTE: register the provider BEFORE repo detection so the view can
+        // resolve as soon as it becomes visible
+        this.graphSidebar = new HgGraphSidebar(
+            hgPath,
+            () => this._repositories.map(r => r.root),
+            cb => this.onDidChangeRepos(cb)
+        );
+        context.subscriptions.push(
+            this.graphSidebar,
+            vscode.window.registerWebviewViewProvider(HgGraphSidebar.viewId, this.graphSidebar)
+        );
+
         for (const folder of folders) {
             const repo = await HgRepository.detect(hgPath, folder, autoRefresh);
             if (repo) {
@@ -77,26 +89,7 @@ export class HgExtension implements vscode.Disposable {
             })
         );
 
-        this.graphView = new HgGraphView(
-            hgPath,
-            () => this._repositories.map(r => r.root),
-            cb => this.onDidChangeRepos(cb)
-        );
-        context.subscriptions.push(this.graphView);
-
-        // "Graph" tree view in the Source Control view container
-        // (like the built-in Git extension's Source Control Graph)
-        this.graphTree = new HgGraphTree(
-            hgPath,
-            () => this._repositories.map(r => r.root),
-            cb => this.onDidChangeRepos(cb)
-        );
-        const treeView = vscode.window.createTreeView('hg.graph', {
-            treeDataProvider: this.graphTree,
-            showCollapseAll: false
-        });
-        context.subscriptions.push(this.graphTree, treeView);
-        void this.graphTree.refresh();
+        void this.graphSidebar.refresh();
         this.updateContext();
 
         this.registerCommands(context);
@@ -122,10 +115,6 @@ export class HgExtension implements vscode.Disposable {
                     }
                 })
             );
-
-        cmd('hg.showGraph', () => {
-            this.graphView?.show();
-        });
 
         cmd('hg.showRevisionDetails', (root: string, rev: number, node: string) =>
             showRevisionDetails(this.hgPath, root, rev, node));
@@ -225,12 +214,8 @@ export class HgExtension implements vscode.Disposable {
         return this._repositories;
     }
 
-    historyGraph(): HgGraphView | undefined {
-        return this.graphView;
-    }
-
-    historyGraphTree(): HgGraphTree | undefined {
-        return this.graphTree;
+    historyGraph(): HgGraphSidebar | undefined {
+        return this.graphSidebar;
     }
 
     /** Resolve which repository a command targets (arg may be repo/group/resource) */
@@ -247,8 +232,7 @@ export class HgExtension implements vscode.Disposable {
     }
 
     dispose(): void {
-        this.graphView?.dispose();
-        this.graphTree?.dispose();
+        this.graphSidebar?.dispose();
         this.changeEmitter.dispose();
         for (const r of this._repositories) { r.dispose(); }
         this._repositories = [];
@@ -275,10 +259,8 @@ let extension: HgExtension | undefined;
 
 export interface HgExtensionApi {
     repositories(): HgRepository[];
-    /** The history graph webview, once created (rows available via rows()) */
-    historyGraph(): HgGraphView | undefined;
-    /** The "Graph" tree view in the Source Control area */
-    historyGraphTree(): HgGraphTree | undefined;
+    /** The "Graph" webview view in the Source Control area (rows()/changedFiles()) */
+    historyGraph(): HgGraphSidebar | undefined;
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<HgExtensionApi> {

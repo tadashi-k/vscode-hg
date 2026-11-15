@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
-import type { FileEntry } from '../graphTree';
 
 const HG_TEST_ENV = process.env.HGRCPATH
     ? { ...process.env, HGRCPATH: process.env.HGRCPATH }
@@ -95,12 +94,11 @@ describe('vscode-hg extension', () => {
         if (!statusOut) { throw new Error('hg branch returned nothing'); }
     });
 
-    it('shows a history graph with revisions and merge topology', async function () {
+    it('builds the graphical Graph view in the Source Control area', async function () {
         this.timeout(30000);
-        await vscode.commands.executeCommand('hg.showGraph');
-        await sleep(2500); // wait for graph fetch
         const graph = api.historyGraph();
-        if (!graph) { throw new Error('history graph view not created'); }
+        if (!graph) { throw new Error('Graph view not created'); }
+        await graph.refresh();
         const rows = graph.rows();
         const nodes = rows.filter(r => r.node);
         if (nodes.length < 3) {
@@ -117,21 +115,19 @@ describe('vscode-hg extension', () => {
         }
     });
 
-    it('populates the Graph tree view in the Source Control area', async function () {
-        this.timeout(30000);
-        await vscode.commands.executeCommand('hg.refresh');
-        await sleep(2500); // wait for tree refresh (subscribed to repo change event)
-        const tree = api.historyGraphTree();
-        if (!tree) { throw new Error('graph tree view not created'); }
-        const rows = tree.rows().filter(r => r.node);
-        if (rows.length < 3) {
-            throw new Error(`expected at least 3 revisions in graph tree, got ${rows.length}`);
+    it('resolves the Graph webview view in the Source Control area', async function () {
+        this.timeout(40000);
+        const graph = api.historyGraph();
+        if (!graph) { throw new Error('Graph view not created'); }
+        if (graph.isResolved) { return; }
+        // focus the view -> VS Code opens the SCM container and resolves it
+        await vscode.commands.executeCommand('hg.graph.focus');
+        const start = Date.now();
+        while (!graph.isResolved && Date.now() - start < 20000) {
+            await sleep(250);
         }
-        const commands = await vscode.commands.getCommands();
-        for (const cmd of ['hg.showRevisionDetails', 'hg.showRevisionDiff', 'hg.updateToRevision']) {
-            if (!commands.includes(cmd)) {
-                throw new Error(`command ${cmd} not registered`);
-            }
+        if (!graph.isResolved) {
+            throw new Error('Graph webview view did not resolve (check "type": "webview" in views contribution)');
         }
     });
 
@@ -167,37 +163,25 @@ describe('vscode-hg extension', () => {
 
     it('lists changed files per commit and diffs a file at that revision', async function () {
         this.timeout(30000);
-        await vscode.commands.executeCommand('hg.refresh');
-        await sleep(2000);
+        const graph = api.historyGraph();
+        if (!graph) { throw new Error('Graph view not created'); }
+        await graph.refresh();
 
-        const tree = api.historyGraphTree();
-        if (!tree) { throw new Error('graph tree view not created'); }
-        const commits = tree.rows().filter(r => r.node);
+        const commits = graph.rows().filter(r => r.node);
         const target = commits.find(r => r.node!.desc.includes('integration test'));
         if (!target?.node) { throw new Error('no suitable commit found in graph'); }
 
         // expanding the commit lists its changed files
-        const files = (await tree.getChildren(target))
-            .filter((f): f is FileEntry => 'kind' in f && f.kind === 'file');
+        const files = await graph.changedFiles(target.node.node);
         if (files.length === 0) {
-            throw new Error('commit expansion returned no changed files');
-        }
-        for (const f of files) {
-            const item = tree.getTreeItem(f);
-            if (item.command?.command !== 'hg.showFileDiffAtRevision') {
-                throw new Error(`file item ${f.relPath} has no diff command`);
-            }
-            if (JSON.stringify(item.command.arguments) !==
-                JSON.stringify([f.root, f.relPath, f.rev, f.node, f.status])) {
-                throw new Error(`file item ${f.relPath} has wrong command arguments`);
-            }
+            throw new Error('changedFiles() returned no files for the commit');
         }
 
         // clicking a file opens the diff at that commit (parent -> commit)
         const first = files[0];
         await vscode.commands.executeCommand(
             'hg.showFileDiffAtRevision',
-            first.root, first.relPath, first.rev, first.node, first.status
+            root, first.path, target.node!.rev, target.node.node, first.status
         );
     });
 
