@@ -3,23 +3,25 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 /**
- * Git-style SVG letter badges for the SCM resource rows.
+ * SVG letter badges for the SCM resource rows.
  *
  * VS Code renders an SCM resource's `iconPath` file icon at the RIGHT end
- * of the row (that is how the built-in Git extension shows its M/A/D
- * badges: small colored rounded squares with a white letter, drawn as
- * SVG letter icons in the git extension's resources folder). A ThemeIcon, however,
- * is rendered as a codicon glyph next to the file name instead, so to get
- * git-like badges we generate the same kind of SVG letter icons.
+ * of the row (that is where the built-in Git extension shows its status
+ * letters). A ThemeIcon, however, is rendered as a codicon glyph next to
+ * the file name instead, so we generate SVG letter icons. The letter is
+ * drawn in the status color without a background, matching the Graph
+ * view's file-badge rendering (FileDecoration letters).
  */
 
 // per theme, like git's icons/light + icons/dark badge variants
+// letter colors, aligned with the hgDecoration.* theme colors used by
+// the Graph view's file badges (see package.json contributes.colors)
 const STATUS_COLORS: Record<string, { light: string; dark: string }> = {
     M: { light: '#9a7b00', dark: '#c9a53a' }, // modified: yellow
-    A: { light: '#3c8746', dark: '#3c8746' }, // added: green (git's added badge)
-    R: { light: '#9e121d', dark: '#9e121d' }, // removed: red (git's deleted badge)
-    '!': { light: '#9e121d', dark: '#9e121d' }, // deleted from disk: red
-    '?': { light: '#6c6c6c', dark: '#6c6c6c' }, // untracked: grey (git's untracked badge)
+    A: { light: '#3c8746', dark: '#81b88b' }, // added: green
+    R: { light: '#9e121d', dark: '#c74e59' }, // removed: red
+    '!': { light: '#9e121d', dark: '#c74e59' }, // deleted from disk: red
+    '?': { light: '#6c6c6c', dark: '#9d9d9d' }, // untracked: grey
     C: { light: '#969696', dark: '#969696' }    // clean: light grey
 };
 
@@ -34,12 +36,12 @@ function iconFileBase(code: string): string {
     }
 }
 
-/** one SVG badge: rounded colored square + centered white letter */
+/** one SVG badge: bare letter in the status color (no background),
+ *  matching the Graph view's FileDecoration letter rendering */
 export function svgBadge(letter: string, color: string): string {
     return [
         '<svg width="14px" height="14px" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">',
-        `  <rect fill="${color}" x="0" y="0" width="100" height="100" rx="35" ry="35"/>`,
-        '  <text x="50" y="75" font-size="75" text-anchor="middle" style="font-family: Menlo, Monaco, Consolas, &quot;Droid Sans Mono&quot;, monospace, &quot;Droid Sans Fallback&quot;;" fill="white">',
+        '  <text x="50" y="80" font-size="100" text-anchor="middle" style="font-family: Menlo, Monaco, Consolas, &quot;Droid Sans Mono&quot;, monospace, &quot;Droid Sans Fallback&quot;;" fill="' + color + '">',
         `    ${letter}`,
         '  </text>',
         '</svg>'
