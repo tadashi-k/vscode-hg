@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { alignBlames, parseAnnotate, parseAnnotateNodes } from '../annotate';
+import { alignBlames, parseAnnotate, parseAnnotateNodes, splitLogBlocks } from '../annotate';
 import { toHgUri } from '../contentProvider';
 import type { HgExtensionApi } from '../extension';
 
@@ -244,6 +244,33 @@ describe('vscode-hg extension', () => {
         }
         if (JSON.stringify(alignBlames([])) !== '[]') {
             throw new Error('empty input must stay empty');
+        }
+    });
+
+    it('splits batched hg log -v output into per-revision blocks with localized labels', () => {
+        // hg labels are localized (e.g. Japanese "チェンジセット" instead of
+        // "changeset"); block detection must not depend on the label text
+        const output = [
+            'チェンジセット:   0:aaaaaaaaaaaa',
+            'ユーザー:         User One',
+            '要約:             first',
+            '',
+            'チェンジセット:   1:bbbbbbbbbbbb',
+            'ユーザー:         User Two',
+            '要約:             second: not a header',
+            ''
+        ].join('\n');
+        const blocks = splitLogBlocks(output);
+        if (blocks.size !== 2) {
+            throw new Error(`expected 2 blocks, got ${blocks.size}`);
+        }
+        if (![...blocks.keys()].find(k => k === 'aaaaaaaaaaaa')) {
+            throw new Error('missing block for aaaaaaaaaaaaa');
+        }
+        // a description line containing "label:" must not split the block
+        const second = blocks.get('bbbbbbbbbbbb') ?? '';
+        if (!second.includes('second: not a header')) {
+            throw new Error('block content broken by description line');
         }
     });
 

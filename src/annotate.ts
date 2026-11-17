@@ -229,9 +229,11 @@ export function splitLogBlocks(output: string): Map<string, string> {
         if (node) { blocks.set(node, lines.join('\n')); }
     };
     for (const line of output.split('\n')) {
-        // only treat exact "changeset: <rev>:<hex>" headers as boundaries,
-        // so description lines that merely start with "changeset:" are safe
-        const m = line.match(/^changeset:\s*\d+:([0-9a-f]{12,40})\s*$/);
+        // block boundaries are the "<label>: <rev>:<hex>" header lines.
+        // The label is hg's localized "changeset" (e.g. "チェンジセット" on
+        // Japanese systems), so match any text before the ASCII colon
+        // instead of the literal English word.
+        const m = line.match(/^[^:\n]{0,40}:\s*\d+:([0-9a-f]{12,40})\s*$/);
         if (m) {
             flush();
             node = m[1];
