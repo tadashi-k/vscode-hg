@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { HgAnnotateInlayHintsProvider } from './annotate';
 import { HgContentProvider } from './contentProvider';
@@ -269,6 +270,23 @@ export class HgExtension implements vscode.Disposable {
                 await repo.clean();
                 this.fireChange();
             }
+        });
+
+        cmd('hg.deleteFile', async (...args) => {
+            const uris = collectUris(args);
+            if (uris.length === 0) { return; }
+            const answer = await vscode.window.showWarningMessage(
+                uris.length === 1
+                    ? `Delete ${path.basename(uris[0].fsPath)}? This cannot be undone.`
+                    : `Delete ${uris.length} files? This cannot be undone.`,
+                { modal: true }, 'Delete'
+            );
+            if (answer !== 'Delete') { return; }
+            for (const uri of uris) {
+                await vscode.workspace.fs.delete(uri, { useTrash: false });
+            }
+            await Promise.all(this._repositories.map(r => r.refresh()));
+            this.fireChange();
         });
 
         cmd('hg.annotate', async (resource: unknown) => {

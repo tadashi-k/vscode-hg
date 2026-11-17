@@ -57,6 +57,11 @@
         "category": "Mercurial"
       },
       {
+        "command": "hg.deleteFile",
+        "title": "Delete",
+        "category": "Mercurial"
+      },
+      {
         "command": "hg.showDiff",
         "title": "Show Diff",
         "category": "Mercurial"
@@ -163,7 +168,12 @@
       "scm/resourceState/context": [
         {
           "command": "hg.add",
-          "when": "scmProvider == hg && scmResourceGroup == working",
+          "when": "scmProvider == hg && (scmResourceGroup == working || scmResourceGroup == untracked)",
+          "group": "1_modification"
+        },
+        {
+          "command": "hg.deleteFile",
+          "when": "scmProvider == hg && scmResourceGroup == untracked",
           "group": "1_modification"
         },
         {
