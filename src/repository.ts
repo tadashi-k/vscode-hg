@@ -120,13 +120,6 @@ export class HgRepository implements vscode.Disposable {
             vscode.window.showWarningMessage('Mercurial: commit message is empty');
             return;
         }
-        // include untracked files when committing everything, like the Git extension does
-        if (!files || files.length === 0) {
-            const untracked = this.untrackedGroup.resourceStates.map(s => path.relative(this.root, s.resourceUri.fsPath));
-            if (untracked.length > 0) {
-                await runHg(this.hgPath, this.root, ['add', '--', ...untracked]);
-            }
-        }
         const args = ['commit', '-m', message, '--quiet'];
         if (files && files.length > 0) {
             args.push(...files.map(u => u.fsPath));
