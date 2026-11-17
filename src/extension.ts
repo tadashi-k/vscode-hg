@@ -291,6 +291,13 @@ export class HgExtension implements vscode.Disposable {
             await repo.showDiff(uri);
         });
 
+        cmd('hg.openFile', async (...args) => {
+            const uris = collectUris(args);
+            for (const uri of uris) {
+                await vscode.commands.executeCommand('vscode.open', uri);
+            }
+        });
+
     }
 
     /** Exposed as the extension's API (tests and other extensions can consume this) */

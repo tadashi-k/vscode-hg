@@ -62,6 +62,12 @@
         "category": "Mercurial"
       },
       {
+        "command": "hg.openFile",
+        "title": "Open File",
+        "category": "Mercurial",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "hg.annotate",
         "title": "Toggle Annotate",
         "category": "Mercurial",
@@ -168,6 +174,11 @@
         {
           "command": "hg.showDiff",
           "when": "scmProvider == hg && scmResourceGroup != untracked",
+          "group": "2_view"
+        },
+        {
+          "command": "hg.openFile",
+          "when": "scmProvider == hg",
           "group": "2_view"
         }
       ]
