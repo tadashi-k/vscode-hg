@@ -263,14 +263,15 @@ describe('vscode-hg extension', () => {
         }
     });
 
-    it('commits all changes via hg.commit', async function () {
+    it('commits all tracked changes via hg.commit, leaving untracked files out', async function () {
         this.timeout(30000);
         await vscode.commands.executeCommand('hg.commit', 'test commit from integration test');
         await sleep(1500); // wait for post-commit refresh
 
         const names = changeNames();
-        if (names.length !== 0) {
-            throw new Error(`expected clean tree after commit, got: ${names.join(', ')}`);
+        if (names.length !== 1 || !names.includes('newfile.py')) {
+            throw new Error(
+                `expected only untracked newfile.py to remain after commit, got: ${names.join(', ')}`);
         }
         const log = execFileSync('hg', ['log', '-l', '1', '--template', '{desc}'],
             { cwd: root, env: HG_TEST_ENV }).toString();

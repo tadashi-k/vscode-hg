@@ -97,6 +97,16 @@
         "command": "hg.updateToRevision",
         "title": "Update to Revision",
         "category": "Mercurial"
+      },
+      {
+        "command": "hg.copyCommitHash",
+        "title": "Copy Commit Hash",
+        "category": "Mercurial"
+      },
+      {
+        "command": "hg.copyCommitMessage",
+        "title": "Copy Commit Message",
+        "category": "Mercurial"
       }
     ],
     "views": {
@@ -132,6 +142,16 @@
           "command": "hg.updateToRevision",
           "when": "view == hg.graph && viewItem == hg.commit",
           "group": "2_update"
+        },
+        {
+          "command": "hg.copyCommitHash",
+          "when": "view == hg.graph && viewItem == hg.commit",
+          "group": "3_copy"
+        },
+        {
+          "command": "hg.copyCommitMessage",
+          "when": "view == hg.graph && viewItem == hg.commit",
+          "group": "3_copy"
         }
       ],
       "editor/title": [

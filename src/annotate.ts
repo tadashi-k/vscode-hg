@@ -68,6 +68,7 @@ export class HgAnnotateInlayHintsProvider implements vscode.InlayHintsProvider {
 
     /** `hg log -v` text per root\u0000node, for hints' hover tooltips */
     private logCache = new Map<string, string>();
+    // (populated in batches by logForMany; one hg call per request batch)
 
     /** documents (by URI string) with annotate mode turned on, per-editor */
     private enabledDocs = new Set<string>();
@@ -116,32 +117,31 @@ export class HgAnnotateInlayHintsProvider implements vscode.InlayHintsProvider {
         const key = `${root}\u0000${rel}\u0000${document.uri.toString()}`;
         let entry = this.cache.get(key);
         if (!entry || entry.seq !== this.cacheSeq) {
-            let output = '';
-            try {
-                // display text: exactly `hg annotate -u -d -q` (short date)
-                output = await runHg(this.hgPath, root, [
+            // both annotate variants run in parallel to halve the wall time
+            // of the first request (each is a full hg process spawn)
+            const [output, nodes] = await Promise.all([
+                runHg(this.hgPath, root, [
                     '--encoding', 'utf-8',
                     'annotate', '-u', '-d', '-q', '--', rel
-                ]);
-            } catch {
-                return []; // untracked/binary/removed files: no annotations
-            }
-            // per-line nodes for the hover (second call; -q alone shows
-            // only the node). If it fails we just skip the hovers.
-            let nodes: string[] = [];
-            try {
-                nodes = parseAnnotateNodes(await runHg(this.hgPath, root, [
+                ]).then(parseAnnotate), // display text: exactly `hg annotate -u -d -q` (short date)
+                // per-line nodes for the hover (-q alone shows only the
+                // node). If it fails we just skip the hovers.
+                runHg(this.hgPath, root, [
                     '--encoding', 'utf-8',
                     'annotate', '-c', '-q', '--', rel
-                ]));
-            } catch { /* no hover then */ }
-            entry = { blames: parseAnnotate(output), nodes, seq: this.cacheSeq };
+                ]).then(parseAnnotateNodes).catch(() => [] as string[])
+            ]).catch(() => undefined as unknown as [string[], string[]]);
+            if (!output) {
+                return []; // untracked/binary/removed files: no annotations
+            }
+            entry = { blames: output, nodes, seq: this.cacheSeq };
             if (this.cache.size > 100) { this.cache.clear(); }
             this.cache.set(key, entry);
         }
 
         const aligned = alignBlames(entry.blames);
         const hints: vscode.InlayHint[] = [];
+        const hintNodes: string[] = [];
         const seenNodes = new Set<string>();
         const startLine = Math.max(0, range.start.line);
         const endLine = Math.min(document.lineCount - 1, range.end.line);
@@ -151,40 +151,95 @@ export class HgAnnotateInlayHintsProvider implements vscode.InlayHintsProvider {
             if (ln >= HgAnnotateInlayHintsProvider.maxLines) { break; }
             const node = entry.nodes[ln] ?? '';
             if (node) { seenNodes.add(node); }
-            const hint = new vscode.InlayHint(
+            hintNodes.push(node);
+            hints.push(new vscode.InlayHint(
                 new vscode.Position(ln, 0),
                 blame,
                 vscode.InlayHintKind.Type
-            );
-            if (node) {
-                hint.tooltip = await this.logFor(root, node);
-            }
-            hints.push(hint);
+            ));
         }
 
-        // fetch tooltip texts eagerly (they are cached, so the hg calls
-        // happen once per unique revision)
-        for (const node of seenNodes) {
-            void this.logFor(root, node);
+        // fetch all tooltip texts in ONE hg call (log -v -r n1 -r n2 ...);
+        // per-node calls would spawn one hg process per revision, which
+        // made the first annotate toggle very slow
+        const logs = await this.logForMany(root, [...seenNodes]);
+        for (let i = 0; i < hints.length; i++) {
+            const node = hintNodes[i];
+            const text = node ? logs.get(node) : undefined;
+            if (text) { hints[i].tooltip = text; }
         }
         return hints;
     }
 
-    /** `hg log -v -r <node>` output (cached per root+node) for hint hovers */
-    private async logFor(root: string, node: string): Promise<string | undefined> {
-        const key = `${root}\u0000${node}`;
-        let text = this.logCache.get(key);
-        if (text === undefined) {
-            try {
-                text = await runHg(this.hgPath, root, [
-                    '--encoding', 'utf-8', 'log', '-v', '-r', node
-                ]);
-                if (this.logCache.size > 500) { this.logCache.clear(); }
-                this.logCache.set(key, text);
-            } catch {
-                return undefined;
+    /**
+     * `hg log -v` text per node (cached per root+node) for hint hovers.
+     * Requests all missing nodes in a single `hg log -v -r a -r b ...`
+     * invocation and splits the output into per-revision blocks.
+     */
+    private async logForMany(
+        root: string,
+        nodes: string[]
+    ): Promise<Map<string, string>> {
+        const result = new Map<string, string>();
+        const missing = new Set<string>();
+        for (const node of nodes) {
+            const cached = this.logCache.get(`${root}\u0000${node}`);
+            if (cached === undefined) {
+                missing.add(node);
+            } else {
+                result.set(node, cached);
             }
         }
-        return text;
+        if (missing.size > 0) {
+            const args = ['--encoding', 'utf-8', 'log', '-v'];
+            for (const node of missing) {
+                args.push('-r', node);
+            }
+            let output = '';
+            try {
+                output = await runHg(this.hgPath, root, args);
+            } catch { /* no tooltips then */ }
+            const blocks = splitLogBlocks(output);
+            if (this.logCache.size + blocks.size > 500) { this.logCache.clear(); }
+            for (const node of missing) {
+                // `hg log` prints full 40-hex nodes; our annotate nodes are
+                // 12-hex, so match by prefix
+                const hit = [...blocks.keys()].find(full => full.startsWith(node));
+                const text = hit ? blocks.get(hit) : undefined;
+                if (text !== undefined) {
+                    this.logCache.set(`${root}\u0000${node}`, text);
+                    result.set(node, text);
+                }
+            }
+        }
+        return result;
     }
+}
+
+/**
+ * Split `hg log -v` output (multiple revisions) into one block per
+ * revision, keyed by the full node from the "changeset:" header line.
+ * Each block is identical to `hg log -v -r <node>` output for that rev.
+ */
+export function splitLogBlocks(output: string): Map<string, string> {
+    const blocks = new Map<string, string>();
+    let node = '';
+    let lines: string[] = [];
+    const flush = () => {
+        if (node) { blocks.set(node, lines.join('\n')); }
+    };
+    for (const line of output.split('\n')) {
+        // only treat exact "changeset: <rev>:<hex>" headers as boundaries,
+        // so description lines that merely start with "changeset:" are safe
+        const m = line.match(/^changeset:\s*\d+:([0-9a-f]{12,40})\s*$/);
+        if (m) {
+            flush();
+            node = m[1];
+            lines = [line];
+        } else if (node) {
+            lines.push(line);
+        }
+    }
+    flush();
+    return blocks;
 }

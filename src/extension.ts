@@ -206,6 +206,20 @@ export class HgExtension implements vscode.Disposable {
             this.fireChange();
         });
 
+        cmd('hg.copyCommitHash', async (arg: unknown) => {
+            const data = arg instanceof HgTreeItem && arg.data.kind === 'commit' ? arg.data : undefined;
+            if (!data) { return; }
+            await vscode.env.clipboard.writeText(data.node);
+        });
+
+        cmd('hg.copyCommitMessage', async (arg: unknown) => {
+            const data = arg instanceof HgTreeItem && arg.data.kind === 'commit' ? arg.data : undefined;
+            if (!data) { return; }
+            // first line only, like Git's 'Copy Subject'
+            const subject = data.desc.split('\n')[0].trim();
+            await vscode.env.clipboard.writeText(subject);
+        });
+
         cmd('hg.refresh', async () => {
             await Promise.all(this._repositories.map(r => r.refresh()));
             this.fireChange();
