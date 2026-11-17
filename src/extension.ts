@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { runHg } from './hg';
 import { HgAnnotateInlayHintsProvider } from './annotate';
 import { HgContentProvider } from './contentProvider';
 import { HgTreeItem, HgGraphTree } from './graphTree';
@@ -244,6 +245,29 @@ export class HgExtension implements vscode.Disposable {
         // expand the newest commit in the Graph view (badge visual check)
         cmd('hg.graph.revealLatest', async () => {
             await this.graphTree?.revealLatestCommit();
+        });
+
+        // branch quick pick (row badge command / command palette)
+        cmd('hg.checkoutBranch', async (...args) => {
+            const repo = this.getRepo(args[0]);
+            if (!repo) { return; }
+            const current = (await runHg(this.hgPath, repo.root, ['branch'])).trim();
+            const branches = (await runHg(this.hgPath, repo.root, ['branches']))
+                .split('\n')
+                .map(l => l.replace(/\s{2,}.*$/, '').trim())
+                .filter(b => !!b);
+            if (branches.length === 0) { return; }
+            const pick = await vscode.window.showQuickPick(
+                branches.map(b => ({
+                    label: b === current ? `$(check) ${b}` : b,
+                    branch: b
+                })),
+                { placeHolder: `Switch branch (current: ${current})` }
+            );
+            if (!pick || pick.branch === current) { return; }
+            await runHg(this.hgPath, repo.root, ['update', '-r', pick.branch]);
+            await Promise.all(this._repositories.map(r => r.refresh()));
+            this.fireChange();
         });
 
         cmd('hg.refresh', async () => {

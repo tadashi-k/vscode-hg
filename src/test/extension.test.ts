@@ -348,6 +348,9 @@ describe('vscode-hg extension', () => {
         fs.writeFileSync(path.join(root, 'newfile.py'), 'print("new file")\n', 'utf8'); // ? grey
         await sleep(1500); // wait for the extension refresh
         await vscode.commands.executeCommand('workbench.view.scm');
+        // show the hidden-by-default Repositories section so the row with
+        // the branch badge is visible in the capture
+        try { await vscode.commands.executeCommand('workbench.scm.repositories.focus'); } catch { /* view not available */ }
         // expand the newest commit in the Graph view so its changed-file
         // rows (with their status badges) are visible in the capture
         await vscode.commands.executeCommand('hg.graph.revealLatest');

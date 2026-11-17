@@ -112,6 +112,12 @@
         "command": "hg.copyCommitMessage",
         "title": "Copy Commit Message",
         "category": "Mercurial"
+      },
+      {
+        "command": "hg.checkoutBranch",
+        "title": "Checkout Branch",
+        "category": "Mercurial",
+        "icon": "$(git-branch)"
       }
     ],
     "views": {

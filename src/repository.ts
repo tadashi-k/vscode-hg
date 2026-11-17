@@ -74,12 +74,23 @@ export class HgRepository implements vscode.Disposable {
                 runHg(this.hgPath, this.root, ['status', '-mardu'])
             ]);
 
+            const statuses = parseStatus(statusOut);
             const b = branch.trim();
+            const dirty = statuses.length > 0;
             this.branchItem.text = `$(git-branch) hg:${b || 'default'}`;
             this.branchItem.tooltip = `Mercurial branch: ${b || 'default'}\n${this.root}`;
             this.branchItem.show();
 
-            const statuses = parseStatus(statusOut);
+            // branch shown right of the repository name in the SCM
+            // "Repositories" row, like the Git extension: the row's toolbar
+            // renders the provider's statusBarCommands ("$(git-branch) master*")
+            this.repo.statusBarCommands = [{
+                command: 'hg.checkoutBranch',
+                title: `$(git-branch) ${b || 'default'}${dirty ? '*' : ''}`,
+                tooltip: `Mercurial branch: ${b || 'default'}${dirty ? ' (with changes)' : ''}`,
+                arguments: [this]
+            }];
+
             this.workingGroup.resourceStates = statuses
                 .filter(s => s.code !== '?')
                 .map(s => this.toResourceState(s));
