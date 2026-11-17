@@ -89,6 +89,30 @@ describe('vscode-hg extension', () => {
         }
     });
 
+    it('decorates resources with git-style SVG letter badges', () => {
+        // typed access to resource states
+        const api2 = api as unknown as {
+            repositories(): Array<{
+                workingGroup: { resourceStates: Array<{ resourceUri: vscode.Uri; decorations?: { light?: { iconPath?: unknown }; dark?: { iconPath?: unknown } } }> };
+                untrackedGroup: { resourceStates: Array<{ resourceUri: vscode.Uri; decorations?: { light?: { iconPath?: unknown }; dark?: { iconPath?: unknown } } }> };
+            }>;
+        };
+        const all = api2.repositories().flatMap(r =>
+            [...r.workingGroup.resourceStates, ...r.untrackedGroup.resourceStates]);
+        if (all.length === 0) { throw new Error('no resource states to check'); }
+        for (const rs of all) {
+            for (const theme of ['light', 'dark'] as const) {
+                const icon = rs.decorations?.[theme]?.iconPath;
+                if (!(icon instanceof vscode.Uri)) {
+                    throw new Error(`${theme} iconPath is not an SVG Uri: ${String(icon)}`);
+                }
+                if (!/status-icons[\\/](light|dark)[\\/](m|a|r|deleted|untracked)\.svg$/i.test(icon.fsPath)) {
+                    throw new Error(`unexpected badge path: ${icon.fsPath}`);
+                }
+            }
+        }
+    });
+
     it('shows branch information', () => {
         const statusOut = execFileSync('hg', ['branch'], { cwd: root, env: HG_TEST_ENV })
             .toString().trim();
@@ -305,6 +329,34 @@ describe('vscode-hg extension', () => {
         if (!log.includes('test commit from integration test')) {
             throw new Error(`commit not found in log, got: ${log}`);
         }
+    });
+
+    // visual check: with HG_VISUAL=1, stage one file of each badge color
+    // (M/A/D/?) in the SCM view and hold the window open so a screen
+    // capture can record the badge rendering
+    it('visual: opens the SCM view for screen capture', async function () {
+        if (process.env.HG_VISUAL !== '1') { this.skip(); }
+        this.timeout(30000);
+        const runv = (args: string[]): string =>
+            (execFileSync('hg', args, { cwd: root, env: HG_TEST_ENV }) ?? '').toString();
+        const ignore = (args: string[]) => { try { runv(args); } catch { /* ok */ } };
+        runv(['update', '-q', '-C', '.']);
+        fs.appendFileSync(path.join(root, 'main.py'), '// visual change\n', 'utf8');  // M yellow
+        fs.writeFileSync(path.join(root, 'added.py'), 'x\n', 'utf8');
+        ignore(['add', 'added.py']);                                                  // A green
+        fs.unlinkSync(path.join(root, 'd.txt'));                                      // D red
+        fs.writeFileSync(path.join(root, 'newfile.py'), 'print("new file")\n', 'utf8'); // ? grey
+        await sleep(1500); // wait for the extension refresh
+        await vscode.commands.executeCommand('workbench.view.scm');
+        // expand the newest commit in the Graph view so its changed-file
+        // rows (with their status badges) are visible in the capture
+        await vscode.commands.executeCommand('hg.graph.revealLatest');
+        console.log('[visual] SCM view opened, holding window open...');
+        await sleep(12000);
+        // restore clean state so other test runs are not polluted
+        ignore(['update', '-q', '-C', '.']);
+        ignore(['forget', 'added.py']);
+        try { fs.unlinkSync(path.join(root, 'added.py')); } catch { /* ok */ }
     });
 
     after(function () {

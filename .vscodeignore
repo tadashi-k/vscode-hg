@@ -11,3 +11,7 @@ package-lock.json
 # test code never ships
 out/test/**
 .gitignore
+
+# screen captures / test artifacts
+screens/**
+test-run.log

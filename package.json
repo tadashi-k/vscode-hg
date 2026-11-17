@@ -99,6 +99,11 @@
         "category": "Mercurial"
       },
       {
+        "command": "hg.graph.revealLatest",
+        "title": "Reveal Latest Commit",
+        "category": "Mercurial"
+      },
+      {
         "command": "hg.copyCommitHash",
         "title": "Copy Commit Hash",
         "category": "Mercurial"
@@ -213,6 +218,58 @@
         }
       ]
     },
+    "colors": [
+      {
+        "id": "hgDecoration.modifiedResourceForeground",
+        "description": "Badge color for files modified in the working copy",
+        "defaults": {
+          "light": "#9a7b00",
+          "dark": "#c9a53a",
+          "highContrast": "#c9a53a",
+          "highContrastLight": "#9a7b00"
+        }
+      },
+      {
+        "id": "hgDecoration.addedResourceForeground",
+        "description": "Badge color for files added to the working copy",
+        "defaults": {
+          "light": "#3c8746",
+          "dark": "#81b88b",
+          "highContrast": "#81b88b",
+          "highContrastLight": "#3c8746"
+        }
+      },
+      {
+        "id": "hgDecoration.removedResourceForeground",
+        "description": "Badge color for files removed (hg remove) in the working copy",
+        "defaults": {
+          "light": "#9e121d",
+          "dark": "#c74e59",
+          "highContrast": "#c74e59",
+          "highContrastLight": "#9e121d"
+        }
+      },
+      {
+        "id": "hgDecoration.deletedResourceForeground",
+        "description": "Badge color for files deleted from the working copy",
+        "defaults": {
+          "light": "#9e121d",
+          "dark": "#c74e59",
+          "highContrast": "#c74e59",
+          "highContrastLight": "#9e121d"
+        }
+      },
+      {
+        "id": "hgDecoration.untrackedResourceForeground",
+        "description": "Badge color for untracked files",
+        "defaults": {
+          "light": "#6c6c6c",
+          "dark": "#9d9d9d",
+          "highContrast": "#9d9d9d",
+          "highContrastLight": "#6c6c6c"
+        }
+      }
+    ],
     "configuration": {
       "title": "Mercurial",
       "properties": {

@@ -3,10 +3,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { HgStatus, parseStatus, runHg, showHgError } from './hg';
 import { relPathInRepo, toHgUri } from './contentProvider';
+import { StatusIcons } from './statusIcons';
 
 export class HgRepository implements vscode.Disposable {
     readonly root: string;
     readonly repo: vscode.SourceControl;
+
+    /** fired after every successful `hg status` refresh */
     readonly workingGroup: vscode.SourceControlResourceGroup;
     readonly untrackedGroup: vscode.SourceControlResourceGroup;
 
@@ -15,10 +18,13 @@ export class HgRepository implements vscode.Disposable {
     private watcher?: vscode.FileSystemWatcher;
     private timer?: NodeJS.Timeout;
 
+
     constructor(
         private readonly hgPath: string,
         rootUri: vscode.Uri,
-        private readonly autoRefresh: boolean
+        private readonly autoRefresh: boolean,
+        /** git-style letter badges per status code (see statusIcons.ts) */
+        private readonly iconUris?: StatusIcons
     ) {
         this.root = rootUri.fsPath;
 
@@ -88,6 +94,9 @@ export class HgRepository implements vscode.Disposable {
 
     private toResourceState(s: HgStatus): vscode.SourceControlResourceState {
         const fileUri = vscode.Uri.file(this.abs(s.path));
+        // git-style letter badge if available (rendered at the row's right
+        // end like the Git extension); fall back to a codicon glyph
+        const icons = this.iconUris?.get(s.code);
         const icon = {
             M: 'diff-modified',
             A: 'diff-added',
@@ -103,7 +112,9 @@ export class HgRepository implements vscode.Disposable {
                 ? { command: 'hg.showDiff', title: 'Show Diff', arguments: [this, fileUri] }
                 : undefined,
             decorations: {
-                iconPath: new vscode.ThemeIcon(icon),
+                iconPath: icons?.light ?? new vscode.ThemeIcon(icon),
+                light: icons ? { iconPath: icons.light } : undefined,
+                dark: icons ? { iconPath: icons.dark } : undefined,
                 strikeThrough: s.code === 'R' || s.code === '!',
                 tooltip: `(${s.code}) ${s.path}`
             }
@@ -177,7 +188,8 @@ export class HgRepository implements vscode.Disposable {
     static async detect(
         hgPath: string,
         folder: vscode.WorkspaceFolder,
-        autoRefresh: boolean
+        autoRefresh: boolean,
+        iconUris?: StatusIcons
     ): Promise<HgRepository | undefined> {
         try {
             await fs.promises.access(path.join(folder.uri.fsPath, '.hg'), fs.constants.F_OK);
@@ -191,7 +203,7 @@ export class HgRepository implements vscode.Disposable {
             console.error(`[vscode-hg] hg not found for ${folder.uri.fsPath}:`, err);
             return undefined;
         }
-        return new HgRepository(hgPath, folder.uri, autoRefresh);
+        return new HgRepository(hgPath, folder.uri, autoRefresh, iconUris);
     }
 
     dispose(): void {

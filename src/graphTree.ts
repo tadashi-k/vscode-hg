@@ -1,4 +1,6 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
+import { hgFileUri } from './decorations';
 import {
     escapeHtml, fetchChangesetFiles, fetchGraph, GraphRow, rowIconUri
 } from './graph';
@@ -131,6 +133,18 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
         return item; // items are fully built in getChildren
     }
 
+    /** required by TreeView.reveal() so the latest commit can auto-expand */
+    getParent(element: vscode.TreeItem): vscode.ProviderResult<vscode.TreeItem> {
+        if (element instanceof HgTreeItem && element.data.kind === 'file') {
+            const root = this.getRepoRoots()[0];
+            const row = root
+                ? this.rowsCache.find(r => r.node?.node === element.data.node)
+                : undefined;
+            return row ? this.buildCommitItem(root, row) : undefined;
+        }
+        return undefined; // commit rows are root-level
+    }
+
     async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         if (!element) {
             const root = this.getRepoRoots()[0];
@@ -196,7 +210,12 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
     private async buildFileItems(data: CommitData): Promise<vscode.TreeItem[]> {
         const files = await this.changedFiles(data.node);
         return files.map(f => {
-            const item = new HgTreeItem(f.path, vscode.TreeItemCollapsibleState.None, {
+            // like Git's graph rows: basename label, folder path as grey
+            // text, and a colored status badge at the row's right end (the
+            // badge comes from HgGraphFileDecorationProvider via the
+            // 'hg-file' resourceUri, which carries this commit's status)
+            const dir = path.dirname(f.path).replace(/\\/g, '/');
+            const item = new HgTreeItem(path.basename(f.path), vscode.TreeItemCollapsibleState.None, {
                 kind: 'file',
                 root: data.root,
                 path: f.path,
@@ -204,8 +223,8 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
                 rev: data.rev,
                 node: data.node
             });
-            // plain single-letter status like Git (M, A, R...), right-aligned
-            item.description = f.status;
+            item.resourceUri = hgFileUri(f.path, f.status);
+            item.description = dir === '.' ? undefined : dir;
             item.command = {
                 command: 'hg.showFileDiffAtRevision',
                 title: 'Show Diff',
@@ -214,6 +233,18 @@ export class HgGraphTree implements vscode.TreeDataProvider<vscode.TreeItem>, vs
             item.contextValue = 'hg.file';
             return item;
         });
+    }
+
+    /** Expand the newest commit's file list (visual badge verification) */
+    async revealLatestCommit(): Promise<void> {
+        if (!this.view) { return; }
+        await this.refresh();
+        const children = await this.getChildren();
+        const firstCommit = children.find(c => c instanceof HgTreeItem &&
+            (c as HgTreeItem).data.kind === 'commit');
+        if (firstCommit) {
+            await this.view.reveal(firstCommit, { expand: 1, select: true });
+        }
     }
 
     dispose(): void {

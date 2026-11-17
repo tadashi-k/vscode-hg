@@ -4,6 +4,8 @@ import { HgAnnotateInlayHintsProvider } from './annotate';
 import { HgContentProvider } from './contentProvider';
 import { HgTreeItem, HgGraphTree } from './graphTree';
 import { HgRepository } from './repository';
+import { ensureStatusIcons } from './statusIcons';
+import { HgGraphFileDecorationProvider } from './decorations';
 import { showFileDiffAtRevision, showRevisionDetails, showRevisionDiff, updateToRevision } from './revisions';
 
 export class HgExtension implements vscode.Disposable {
@@ -45,6 +47,22 @@ export class HgExtension implements vscode.Disposable {
         );
         context.subscriptions.push(this.contentProvider);
 
+        // colored status-letter badges at the right end of the Graph view's
+        // changed-file rows, like the Git extension's graph
+        const graphDecorations = new HgGraphFileDecorationProvider();
+        // @types/vscode >= 1.146 moves registerFileDecorationProvider to
+        // window; older runtimes (engine ^1.99) have it on workspace -
+        // use whichever exists
+        type DecorationRegistrar = (p: vscode.FileDecorationProvider) => vscode.Disposable;
+        const registerDecoration: DecorationRegistrar | undefined =
+            (vscode.window as unknown as { registerFileDecorationProvider?: DecorationRegistrar }).registerFileDecorationProvider
+            ?? (vscode.workspace as unknown as { registerFileDecorationProvider?: DecorationRegistrar }).registerFileDecorationProvider;
+        if (registerDecoration) {
+            context.subscriptions.push(registerDecoration(graphDecorations));
+        } else {
+            console.error('[vscode-hg] registerFileDecorationProvider not available; Graph badges disabled');
+        }
+
         // annotate mode ("blame" beside line numbers)
         this.annotateProvider = new HgAnnotateInlayHintsProvider(
             hgPath,
@@ -61,6 +79,9 @@ export class HgExtension implements vscode.Disposable {
             this.createAnnotateRefreshListeners()
         );
 
+        // generate git-style SVG letter badges once per session
+        const statusIcons = await ensureStatusIcons(context.globalStorageUri);
+
         const folders = vscode.workspace.workspaceFolders ?? [];
         // "Graph" NATIVE tree view in the Source Control view container
         // (like the built-in Git extension's Source Control Graph)
@@ -76,7 +97,7 @@ export class HgExtension implements vscode.Disposable {
         context.subscriptions.push(this.graphTree, this.graphTreeView);
 
         for (const folder of folders) {
-            const repo = await HgRepository.detect(hgPath, folder, autoRefresh);
+            const repo = await HgRepository.detect(hgPath, folder, autoRefresh, statusIcons);
             if (repo) {
                 this._repositories.push(repo);
                 context.subscriptions.push(repo);
@@ -97,7 +118,7 @@ export class HgExtension implements vscode.Disposable {
                     });
                 }
                 for (const a of e.added) {
-                    void HgRepository.detect(hgPath, a, autoRefresh).then(repo => {
+                    void HgRepository.detect(hgPath, a, autoRefresh, statusIcons).then(repo => {
                         if (repo) {
                             this._repositories.push(repo);
                             context.subscriptions.push(repo);
@@ -218,6 +239,11 @@ export class HgExtension implements vscode.Disposable {
             // first line only, like Git's 'Copy Subject'
             const subject = data.desc.split('\n')[0].trim();
             await vscode.env.clipboard.writeText(subject);
+        });
+
+        // expand the newest commit in the Graph view (badge visual check)
+        cmd('hg.graph.revealLatest', async () => {
+            await this.graphTree?.revealLatestCommit();
         });
 
         cmd('hg.refresh', async () => {
