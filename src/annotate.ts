@@ -154,7 +154,10 @@ export class HgAnnotateInlayHintsProvider implements vscode.InlayHintsProvider {
             hintNodes.push(node);
             hints.push(new vscode.InlayHint(
                 new vscode.Position(ln, 0),
-                blame,
+                // the aligned prefixes all have the same width, so appending
+                // a "|" separator draws a vertical line between the blame
+                // area and the code (monospace font assumed, as for alignBlames)
+                [{ value: blame }, { value: ' \u2502 ' }],
                 vscode.InlayHintKind.Type
             ));
         }
